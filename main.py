@@ -98,7 +98,7 @@ def build_caption(theme: str, facet_label: str, summary: str | None) -> str:
         body = f"\n\n{html.escape(short)}"
     else:
         body = ""
-    footer = "\n\n#tabiat #sayohat #dunyo"
+    footer = "\n\n#tabiat #sayohat #dunyo #4K #nature #world"
     return header + body + footer
 
 
