@@ -1,0 +1,132 @@
+2026-09-08 09:03:33,756 [INFO] [MainThread] [hub] Tabiat boti har 30 daqiqada ishlaydi.
+2026-09-08 09:03:33,756 [INFO] [MainThread] [hub] Kripto boti har 60 daqiqada ishlaydi.
+2026-09-08 09:03:33,756 [INFO] [MainThread] [hub] Futbol boti har 240 daqiqada ishlaydi.
+2026-09-08 09:03:33,757 [INFO] [bot-tabiat] [hub] [tabiat] ishga tushmoqda...
+2026-09-08 09:03:33,757 [INFO] [bot-kripto] [hub] [kripto] ishga tushmoqda...
+2026-09-08 09:03:33,758 [INFO] [bot-futbol] [hub] [futbol] ishga tushmoqda...
+2026-09-08 09:03:33,758 [INFO] [MainThread] [hub] Hub ishga tushdi, botlar o'z jadvali bo'yicha ishlaydi. To'xtatish uchun Ctrl+C.
+2026-09-08 09:03:33,765 [INFO] [bot-kripto] [bots.crypto.run] Binance'dan barcha juftliklar olinmoqda...
+2026-09-08 09:03:33,765 [INFO] [bot-tabiat] [bots.nature.topics] Wikipedia'dan yangi joylar havzasi yig'ilmoqda (bir necha o'n soniya vaqt olishi mumkin)...
+2026-09-08 09:03:33,769 [INFO] [bot-futbol] [bots.football.run] Tanlangan ligalar: Premer-liga, La Liga, Seriya A, Bundesliga, Ligue 1, Chempionlar Ligasi, O'zbekiston Superligasi
+2026-09-08 09:03:33,769 [INFO] [bot-futbol] [bots.football.run] So'nggi natijalar olinmoqda...
+2026-09-08 09:03:34,950 [WARNING] [bot-futbol] [bots.football.match_filter] Premer-liga natijalari olinmadi.
+2026-09-08 09:03:34,954 [INFO] [bot-futbol] [bots.football.run]   Tekshirilmoqda: Premer-liga
+2026-09-08 09:03:35,460 [INFO] [bot-tabiat] [bots.nature.topics] 'national park' bo'yicha 46 ta joy topildi (jami havza: 46)
+2026-09-08 09:03:35,710 [WARNING] [bot-futbol] [bots.football.match_filter] La Liga natijalari olinmadi.
+2026-09-08 09:03:35,712 [INFO] [bot-futbol] [bots.football.run]   Tekshirilmoqda: La Liga
+2026-09-08 09:03:35,785 [INFO] [bot-kripto] [bots.crypto.run] Tahlil uchun 196 ta likvid USDT juftlik topildi.
+2026-09-08 09:03:35,786 [INFO] [bot-kripto] [bots.crypto.run] RSI hisoblanmoqda (20 ta coin)...
+2026-09-08 09:03:36,112 [INFO] [bot-tabiat] [bots.nature.topics] 'waterfall' bo'yicha 42 ta joy topildi (jami havza: 88)
+2026-09-08 09:03:37,307 [INFO] [bot-tabiat] [bots.nature.topics] 'island' bo'yicha 46 ta joy topildi (jami havza: 134)
+2026-09-08 09:03:38,446 [INFO] [bot-tabiat] [bots.nature.topics] 'mountain range' bo'yicha 41 ta joy topildi (jami havza: 175)
+2026-09-08 09:03:39,483 [INFO] [bot-tabiat] [bots.nature.topics] 'lake' bo'yicha 47 ta joy topildi (jami havza: 222)
+2026-09-08 09:03:40,342 [INFO] [bot-tabiat] [bots.nature.topics] 'desert' bo'yicha 49 ta joy topildi (jami havza: 271)
+2026-09-08 09:03:41,336 [INFO] [bot-tabiat] [bots.nature.topics] 'cave' bo'yicha 48 ta joy topildi (jami havza: 319)
+2026-09-08 09:03:42,348 [INFO] [bot-tabiat] [bots.nature.topics] 'rainforest' bo'yicha 48 ta joy topildi (jami havza: 367)
+2026-09-08 09:03:43,316 [INFO] [bot-tabiat] [bots.nature.topics] 'beach' bo'yicha 48 ta joy topildi (jami havza: 415)
+2026-09-08 09:03:44,432 [INFO] [bot-tabiat] [bots.nature.topics] 'canyon' bo'yicha 47 ta joy topildi (jami havza: 460)
+2026-09-08 09:03:45,275 [WARNING] [bot-tabiat] [bots.nature.topics] Wikipedia qidiruvida xatolik ('volcano'): 429 Client Error: Too Many Requests for url: https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=volcano&srlimit=50&format=json
+2026-09-08 09:03:45,277 [INFO] [bot-tabiat] [bots.nature.topics] 'volcano' bo'yicha 0 ta joy topildi (jami havza: 460)
+2026-09-08 09:03:45,494 [INFO] [bot-futbol] [bots.football.run]   Tekshirilmoqda: Seriya A
+2026-09-08 09:03:45,862 [WARNING] [bot-tabiat] [bots.nature.topics] Wikipedia qidiruvida xatolik ('nature reserve'): 429 Client Error: Too Many Requests for url: https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=nature+reserve&srlimit=50&format=json
+2026-09-08 09:03:45,863 [INFO] [bot-tabiat] [bots.nature.topics] 'nature reserve' bo'yicha 0 ta joy topildi (jami havza: 460)
+2026-09-08 09:03:46,513 [WARNING] [bot-tabiat] [bots.nature.topics] Wikipedia qidiruvida xatolik ('valley'): 429 Client Error: Too Many Requests for url: https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=valley&srlimit=50&format=json
+2026-09-08 09:03:46,515 [INFO] [bot-tabiat] [bots.nature.topics] 'valley' bo'yicha 0 ta joy topildi (jami havza: 460)
+2026-09-08 09:03:47,039 [WARNING] [bot-tabiat] [bots.nature.topics] Wikipedia qidiruvida xatolik ('fjord'): 429 Client Error: Too Many Requests for url: https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=fjord&srlimit=50&format=json
+2026-09-08 09:03:47,040 [INFO] [bot-tabiat] [bots.nature.topics] 'fjord' bo'yicha 0 ta joy topildi (jami havza: 460)
+2026-09-08 09:03:47,717 [WARNING] [bot-tabiat] [bots.nature.topics] Wikipedia qidiruvida xatolik ('coral reef'): 429 Client Error: Too Many Requests for url: https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=coral+reef&srlimit=50&format=json
+2026-09-08 09:03:47,719 [INFO] [bot-tabiat] [bots.nature.topics] 'coral reef' bo'yicha 0 ta joy topildi (jami havza: 460)
+2026-09-08 09:03:48,385 [WARNING] [bot-tabiat] [bots.nature.topics] Wikipedia qidiruvida xatolik ('glacier'): 429 Client Error: Too Many Requests for url: https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=glacier&srlimit=50&format=json
+2026-09-08 09:03:48,387 [INFO] [bot-tabiat] [bots.nature.topics] 'glacier' bo'yicha 0 ta joy topildi (jami havza: 460)
+2026-09-08 09:03:49,208 [WARNING] [bot-tabiat] [bots.nature.topics] Wikipedia qidiruvida xatolik ('hot spring'): 429 Client Error: Too Many Requests for url: https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=hot+spring&srlimit=50&format=json
+2026-09-08 09:03:49,211 [INFO] [bot-tabiat] [bots.nature.topics] 'hot spring' bo'yicha 0 ta joy topildi (jami havza: 460)
+2026-09-08 09:03:50,015 [WARNING] [bot-tabiat] [bots.nature.topics] Wikipedia qidiruvida xatolik ('sand dunes'): 429 Client Error: Too Many Requests for url: https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=sand+dunes&srlimit=50&format=json
+2026-09-08 09:03:50,016 [INFO] [bot-tabiat] [bots.nature.topics] 'sand dunes' bo'yicha 0 ta joy topildi (jami havza: 460)
+2026-09-08 09:03:50,976 [WARNING] [bot-tabiat] [bots.nature.topics] Wikipedia qidiruvida xatolik ('wildlife sanctuary'): 429 Client Error: Too Many Requests for url: https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=wildlife+sanctuary&srlimit=50&format=json
+2026-09-08 09:03:50,978 [INFO] [bot-tabiat] [bots.nature.topics] 'wildlife sanctuary' bo'yicha 0 ta joy topildi (jami havza: 460)
+2026-09-08 09:03:51,853 [WARNING] [bot-tabiat] [bots.nature.topics] Wikipedia qidiruvida xatolik ('mangrove forest'): 429 Client Error: Too Many Requests for url: https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=mangrove+forest&srlimit=50&format=json
+2026-09-08 09:03:51,855 [INFO] [bot-tabiat] [bots.nature.topics] 'mangrove forest' bo'yicha 0 ta joy topildi (jami havza: 460)
+2026-09-08 09:03:52,978 [WARNING] [bot-tabiat] [bots.nature.topics] Wikipedia qidiruvida xatolik ('archipelago'): 429 Client Error: Too Many Requests for url: https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=archipelago&srlimit=50&format=json
+2026-09-08 09:03:52,980 [INFO] [bot-tabiat] [bots.nature.topics] 'archipelago' bo'yicha 0 ta joy topildi (jami havza: 460)
+2026-09-08 09:03:53,606 [WARNING] [bot-tabiat] [bots.nature.topics] Wikipedia qidiruvida xatolik ('peninsula'): 429 Client Error: Too Many Requests for url: https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=peninsula&srlimit=50&format=json
+2026-09-08 09:03:53,607 [INFO] [bot-tabiat] [bots.nature.topics] 'peninsula' bo'yicha 0 ta joy topildi (jami havza: 460)
+2026-09-08 09:03:54,821 [WARNING] [bot-tabiat] [bots.nature.topics] Wikipedia qidiruvida xatolik ('gorge'): 429 Client Error: Too Many Requests for url: https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=gorge&srlimit=50&format=json
+2026-09-08 09:03:54,823 [INFO] [bot-tabiat] [bots.nature.topics] 'gorge' bo'yicha 0 ta joy topildi (jami havza: 460)
+2026-09-08 09:03:55,745 [WARNING] [bot-tabiat] [bots.nature.topics] Wikipedia qidiruvida xatolik ('wetland'): 429 Client Error: Too Many Requests for url: https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=wetland&srlimit=50&format=json
+2026-09-08 09:03:55,748 [INFO] [bot-tabiat] [bots.nature.topics] 'wetland' bo'yicha 0 ta joy topildi (jami havza: 460)
+2026-09-08 09:03:55,752 [INFO] [bot-tabiat] [bots.nature.state] Yangi oyna (2026-09-08-2) uchun mavzu tanlandi: Lake Tahoe
+2026-09-08 09:03:55,762 [INFO] [bot-tabiat] [bots.nature.run] Joriy mavzu: Lake Tahoe | Qirra: umumiy manzarasi | Qidiruv variantlari: ['Lake Tahoe']
+2026-09-08 09:03:56,171 [INFO] [bot-futbol] [bots.football.run]   Tekshirilmoqda: Bundesliga
+2026-09-08 09:03:56,327 [INFO] [bot-kripto] [bots.crypto.run] Fyuchers ma'lumotlari olinmoqda (Funding, OI, Long/Short)...
+2026-09-08 09:03:56,770 [ERROR] [bot-tabiat] [bots.nature.info_fetcher] Wikipedia qidiruvida xatolik (Lake Tahoe): 429 Client Error: Too Many Requests for url: https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=Lake+Tahoe&format=json&srlimit=1
+2026-09-08 09:03:58,303 [ERROR] [bot-tabiat] [bots.nature.media_fetcher] Pexels video so'rovida xatolik (Lake Tahoe): 401 Client Error: Unauthorized for url: https://api.pexels.com/videos/search?query=Lake+Tahoe&per_page=15&orientation=portrait
+2026-09-08 09:03:58,954 [WARNING] [bot-tabiat] [bots.nature.pixabay_fetcher] Pixabay video so'rovida xatolik (Lake Tahoe): 400 Client Error: Bad Request for url: https://pixabay.com/api/videos/?key=CU8DLQKjH8pu12YHJtuK1SiWacG7H2p1lOvtcjROK6UZ3SGKeJHFxmgL&q=Lake+Tahoe&per_page=20&safesearch=true
+2026-09-08 09:03:59,536 [WARNING] [bot-tabiat] [bots.nature.wikimedia_fetcher] Wikimedia Commons so'rovida xatolik (Lake Tahoe, video): 429 Client Error: Too Many Requests for url: https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=Lake+Tahoe+filetype%3Avideo&gsrnamespace=6&gsrlimit=20&prop=imageinfo&iiprop=url%7Csize%7Cmime&format=json
+2026-09-08 09:03:59,539 [INFO] [bot-tabiat] [bots.nature.wikimedia_fetcher] Wikimedia Commons'da 'Lake Tahoe' uchun vertikal formatdagi video topilmadi
+2026-09-08 09:03:59,539 [INFO] [bot-tabiat] [bots.nature.run] Video (vertikal/telefon uchun) uchun hech qanday manba/so'rov birikmasida natija topilmadi.
+2026-09-08 09:04:00,200 [ERROR] [bot-tabiat] [bots.nature.media_fetcher] Pexels video so'rovida xatolik (Lake Tahoe): 401 Client Error: Unauthorized for url: https://api.pexels.com/videos/search?query=Lake+Tahoe&per_page=15&orientation=landscape
+2026-09-08 09:04:00,795 [WARNING] [bot-tabiat] [bots.nature.pixabay_fetcher] Pixabay video so'rovida xatolik (Lake Tahoe): 400 Client Error: Bad Request for url: https://pixabay.com/api/videos/?key=CU8DLQKjH8pu12YHJtuK1SiWacG7H2p1lOvtcjROK6UZ3SGKeJHFxmgL&q=Lake+Tahoe&per_page=20&safesearch=true
+2026-09-08 09:04:01,991 [INFO] [bot-tabiat] [bots.nature.run] Video (gorizontal) topildi — manba: Wikimedia Commons, so'rov: 'Lake Tahoe'
+2026-09-08 09:04:02,765 [WARNING] [bot-tabiat] [bots.nature.media_fetcher] Faylni yuklab olishda xatolik (https://upload.wikimedia.org/wikipedia/commons/0/0d/Northern_Nevada_International_Dragon_Boat_Festival_2018.webm?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original): 403 Client Error: Forbidden for url: https://upload.wikimedia.org/wikipedia/commons/0/0d/Northern_Nevada_International_Dragon_Boat_Festival_2018.webm?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original
+2026-09-08 09:04:04,817 [ERROR] [bot-tabiat] [shared.telegram_poster] Telegram sendVideo rad etdi (status 400): Bad Request: failed to get HTTP URL content
+2026-09-08 09:04:04,819 [ERROR] [bot-tabiat] [bots.nature.run] 'Lake Tahoe' (umumiy manzarasi) uchun videoni joylashda xatolik.
+2026-09-08 09:04:05,671 [ERROR] [bot-tabiat] [bots.nature.media_fetcher] Pexels rasm so'rovida xatolik (Lake Tahoe): 401 Client Error: Unauthorized for url: https://api.pexels.com/v1/search?query=Lake+Tahoe&per_page=15&orientation=portrait
+2026-09-08 09:04:06,256 [WARNING] [bot-tabiat] [bots.nature.pixabay_fetcher] Pixabay rasm so'rovida xatolik (Lake Tahoe): 400 Client Error: Bad Request for url: https://pixabay.com/api/?key=CU8DLQKjH8pu12YHJtuK1SiWacG7H2p1lOvtcjROK6UZ3SGKeJHFxmgL&q=Lake+Tahoe&image_type=photo&orientation=vertical&per_page=20&safesearch=true
+2026-09-08 09:04:07,556 [INFO] [bot-tabiat] [bots.nature.run] Rasm (vertikal/telefon uchun) topildi — manba: Wikimedia Commons, so'rov: 'Lake Tahoe'
+2026-09-08 09:04:10,079 [ERROR] [bot-tabiat] [shared.telegram_poster] Telegram sendPhoto rad etdi (status 400): Bad Request: failed to get HTTP URL content
+2026-09-08 09:04:10,083 [ERROR] [bot-tabiat] [bots.nature.run] 'Lake Tahoe' (umumiy manzarasi) uchun rasmni joylashda xatolik.
+2026-09-08 09:04:10,083 [ERROR] [bot-tabiat] [bots.nature.run] 'Lake Tahoe' (umumiy manzarasi) uchun na video, na rasm joylanmadi. Bu safar o'tkazib yuborildi.
+2026-09-08 09:04:10,083 [INFO] [bot-tabiat] [hub] [tabiat] tugadi.
+2026-09-08 09:04:14,425 [INFO] [bot-futbol] [bots.football.run]   Tekshirilmoqda: Ligue 1
+2026-09-08 09:04:16,682 [INFO] [bot-futbol] [bots.football.run]   Tekshirilmoqda: Chempionlar Ligasi
+2026-09-08 09:04:18,114 [INFO] [bot-futbol] [bots.football.run]   Tekshirilmoqda: O'zbekiston Superligasi
+2026-09-08 09:04:19,152 [INFO] [bot-futbol] [bots.football.run]   Tekshirilmoqda: Gollar: Udinese — Lazio
+2026-09-08 09:04:21,258 [INFO] [bot-futbol] [bots.football.run]   Tekshirilmoqda: Gollar: Eintracht Frankfurt — Augsburg
+2026-09-08 09:04:22,709 [INFO] [bot-futbol] [bots.football.run]   Tekshirilmoqda: Gollar: Marseille — Paris FC
+2026-09-08 09:04:22,860 [INFO] [bot-futbol] [bots.football.run] 3 ta natija topildi, yuborilmoqda...
+2026-09-08 09:04:22,862 [WARNING] [bot-futbol] [shared.fonts] DejaVu Sans shrifti topilmadi (fonts-dejavu-core o'rnatilmagan bo'lishi mumkin) — kartalar standart (kichik) shrift bilan chiziladi. `sudo apt install fonts-dejavu-core` tavsiya etiladi.
+2026-09-08 09:04:26,673 [INFO] [bot-futbol] [bots.football.run]   [1/3] Udinese 1-2 Lazio yuborildi.
+2026-09-08 09:04:32,645 [INFO] [bot-futbol] [bots.football.run]   [2/3] Eintracht Frankfurt 1-4 Augsburg yuborildi.
+2026-09-08 09:04:38,547 [INFO] [bot-futbol] [bots.football.run]   [3/3] Marseille 2-3 Paris FC yuborildi.
+2026-09-08 09:04:41,015 [INFO] [bot-kripto] [bots.crypto.run] Jami 20 ta alohida coin xabari yuborilmoqda...
+2026-09-08 09:04:41,051 [INFO] [bot-futbol] [bots.football.run] Yaqin kunlardagi o'yinlar olinmoqda...
+2026-09-08 09:04:41,969 [INFO] [bot-futbol] [bots.football.run]   Tekshirilmoqda: Premer-liga
+2026-09-08 09:04:42,183 [INFO] [bot-kripto] [bots.crypto.run]   [1/20] SOPHUSDT (o'suvchi #1) yuborildi.
+2026-09-08 09:04:42,985 [INFO] [bot-futbol] [bots.football.run]   Tekshirilmoqda: La Liga
+2026-09-08 09:04:44,381 [INFO] [bot-futbol] [bots.football.run]   Tekshirilmoqda: Seriya A
+2026-09-08 09:04:45,130 [INFO] [bot-futbol] [bots.football.run]   Tekshirilmoqda: Bundesliga
+2026-09-08 09:04:45,352 [INFO] [bot-kripto] [bots.crypto.run]   [2/20] IOSTUSDT (o'suvchi #2) yuborildi.
+2026-09-08 09:04:46,020 [INFO] [bot-futbol] [bots.football.run]   Tekshirilmoqda: Ligue 1
+2026-09-08 09:04:46,944 [INFO] [bot-futbol] [bots.football.run]   Tekshirilmoqda: Chempionlar Ligasi
+2026-09-08 09:04:47,918 [INFO] [bot-futbol] [bots.football.run]   Tekshirilmoqda: O'zbekiston Superligasi
+2026-09-08 09:04:48,119 [INFO] [bot-futbol] [bots.football.run] 2 ta o'yin topildi, yuborilmoqda...
+2026-09-08 09:04:48,611 [INFO] [bot-kripto] [bots.crypto.run]   [3/20] AEROUSDT (o'suvchi #3) yuborildi.
+2026-09-08 09:04:51,959 [INFO] [bot-futbol] [bots.football.run]   [1/2] Club Brugge — Aston Villa yuborildi.
+2026-09-08 09:04:52,305 [INFO] [bot-kripto] [bots.crypto.run]   [4/20] INJUSDT (o'suvchi #4) yuborildi.
+2026-09-08 09:04:55,885 [INFO] [bot-kripto] [bots.crypto.run]   [5/20] SOLVUSDT (o'suvchi #5) yuborildi.
+2026-09-08 09:04:58,113 [INFO] [bot-futbol] [bots.football.run]   [2/2] AGMK — Pakhtakor yuborildi.
+2026-09-08 09:05:00,613 [INFO] [bot-futbol] [bots.football.run] Futbol yangiliklari olinmoqda...
+2026-09-08 09:05:01,202 [INFO] [bot-kripto] [bots.crypto.run]   [6/20] WLDUSDT (o'suvchi #6) yuborildi.
+2026-09-08 09:05:04,865 [INFO] [bot-kripto] [bots.crypto.run]   [7/20] KAVAUSDT (o'suvchi #7) yuborildi.
+2026-09-08 09:05:06,497 [INFO] [bot-futbol] [bots.football.run] Yangiliklar xabari yuborildi (5 ta).
+2026-09-08 09:05:06,498 [INFO] [bot-futbol] [bots.football.run] Futbol bot ishi yakunlandi. Jami 6 ta xabar yuborildi.
+2026-09-08 09:05:06,499 [INFO] [bot-futbol] [hub] [futbol] tugadi.
+2026-09-08 09:05:08,651 [INFO] [bot-kripto] [bots.crypto.run]   [8/20] VELODROMEUSDT (o'suvchi #8) yuborildi.
+2026-09-08 09:05:12,236 [INFO] [bot-kripto] [bots.crypto.run]   [9/20] DOTUSDT (o'suvchi #9) yuborildi.
+2026-09-08 09:05:15,904 [INFO] [bot-kripto] [bots.crypto.run]   [10/20] ICPUSDT (o'suvchi #10) yuborildi.
+2026-09-08 09:05:19,299 [INFO] [bot-kripto] [bots.crypto.run]   [11/20] NFPUSDT (tushuvchi #1) yuborildi.
+2026-09-08 09:05:22,383 [INFO] [bot-kripto] [bots.crypto.run]   [12/20] VICUSDT (tushuvchi #2) yuborildi.
+2026-09-08 09:05:25,840 [INFO] [bot-kripto] [bots.crypto.run]   [13/20] VANRYUSDT (tushuvchi #3) yuborildi.
+2026-09-08 09:05:29,403 [INFO] [bot-kripto] [bots.crypto.run]   [14/20] SCRTUSDT (tushuvchi #4) yuborildi.
+2026-09-08 09:05:33,480 [INFO] [bot-kripto] [bots.crypto.run]   [15/20] MARSCOINUSDT (tushuvchi #5) yuborildi.
+2026-09-08 09:05:37,116 [INFO] [bot-kripto] [bots.crypto.run]   [16/20] HEMIUSDT (tushuvchi #6) yuborildi.
+2026-09-08 09:05:40,807 [INFO] [bot-kripto] [bots.crypto.run]   [17/20] CHIPUSDT (tushuvchi #7) yuborildi.
+2026-09-08 09:05:44,245 [INFO] [bot-kripto] [bots.crypto.run]   [18/20] DASHUSDT (tushuvchi #8) yuborildi.
+2026-09-08 09:05:47,803 [INFO] [bot-kripto] [bots.crypto.run]   [19/20] EPICUSDT (tushuvchi #9) yuborildi.
+2026-09-08 09:05:51,249 [INFO] [bot-kripto] [bots.crypto.run]   [20/20] ORCAUSDT (tushuvchi #10) yuborildi.
+2026-09-08 09:05:53,751 [INFO] [bot-kripto] [bots.crypto.run] Kuzatish ro'yxati uchun 60 ta qo'shimcha coin skanerlanmoqda...
+2026-09-08 09:07:55,710 [INFO] [bot-kripto] [bots.crypto.run] Hozircha kuzatish uchun mos nomzod topilmadi.
+2026-09-08 09:07:55,712 [INFO] [bot-kripto] [bots.crypto.run] So'nggi kripto yangiliklari olinmoqda...
+2026-09-08 09:08:00,305 [INFO] [bot-kripto] [bots.crypto.run] Yangiliklar xabari yuborildi (5 ta).
+2026-09-08 09:08:00,305 [INFO] [bot-kripto] [bots.crypto.run] Kripto bot ishi yakunlandi. Jami 20 ta coin xabari yuborildi.
+2026-09-08 09:08:00,310 [INFO] [bot-kripto] [hub] [kripto] tugadi.

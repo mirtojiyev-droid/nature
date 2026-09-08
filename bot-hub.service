@@ -1,0 +1,30 @@
+; systemd xizmat fayli — uchala botni (tabiat, kripto, futbol) BITTA jarayon sifatida
+; VPS'da doimiy (24/7) ishlab turadigan qiladi, server qayta yoqilganda yoki jarayon
+; qulab tushganda avtomatik qayta ishga tushiradi.
+;
+; O'rnatish:
+;   nano bot-hub.service   # User, WorkingDirectory, ExecStart'dagi YOUR_USERNAME'ni almashtiring
+;   sudo cp bot-hub.service /etc/systemd/system/
+;   sudo systemctl daemon-reload
+;   sudo systemctl enable bot-hub
+;   sudo systemctl start bot-hub
+;
+; Holatini tekshirish:
+;   sudo systemctl status bot-hub
+;   journalctl -u bot-hub -f
+
+[Unit]
+Description=Bot Hub — tabiat, kripto va futbol botlari (bitta jarayon)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=YOUR_USERNAME
+WorkingDirectory=/home/YOUR_USERNAME/bot_hub
+ExecStart=/home/YOUR_USERNAME/bot_hub/venv/bin/python main.py
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
