@@ -108,10 +108,25 @@ avtomatik o'zini tiklab, davom etadi.
 `FOOTBALL_INTERVAL_MINUTES` orqali sozlanadi (standart: tabiat — 30 daqiqa, kripto — 60
 daqiqa, futbol — 240 daqiqa/4 soat). Uch bot bir-biridan mustaqil — bittasining intervali
 boshqasiga ta'sir qilmaydi, va bittasi xato bersa (masalan Binance vaqtincha ishlamay
-qolsa), faqat o'sha bot safar o'tkazib yuboriladi, boshqalari davom etadi. Har bir bot
-o'zining ALOHIDA ip-oqimida (thread) ishlaydi — masalan tabiat boti ffmpeg bilan bir
-necha daqiqa band bo'lib qolsa ham, bu kripto yoki futbol botining o'z vaqtida ishga
-tushishiga to'sqinlik qilmaydi.
+qolsa), faqat o'sha bot safar o'tkazib yuboriladi, boshqalari davom etadi.
+
+**Operativ xotira va bir vaqtda ishlash (`HUB_MAX_CONCURRENT_JOBS`)**: har bir bot o'z
+ALOHIDA ip-oqimida (thread) ishlaydi, lekin bir vaqtning o'zida NECHTASI haqiqatan
+ISHLASHI (fn() bajarilishi) mumkinligi `.env`'dagi `HUB_MAX_CONCURRENT_JOBS` bilan
+cheklanadi:
+- **Standart qiymat: 1** — botlar hech qachon bir vaqtda ishlamaydi, navbat bilan
+  birin-ketin ishlaydi. Bu Render/Railway kabi platformalarning arzon, kam xotirali
+  (512MB-1GB) tariflari uchun **XAVFSIZ va TAVSIYA ETILADI** — ayniqsa tabiat boti 4K
+  video qayta kodlayotgan (ffmpeg orqali, bir necha yuz MB operativ xotira talab
+  qilishi mumkin) paytda boshqa bot ham ishga tushib qolsa, xotira "out of memory"
+  xatosiga olib kelishi mumkin edi.
+- Serveringizda operativ xotira yetarli bo'lsa (2GB+), buni 2 yoki 3'ga oshirib,
+  botlarning bir-birini kutmasdan tezroq (parallel) ishlashiga ruxsat berishingiz mumkin.
+
+**Muhim**: bu operativ xotira muammosini ikkinchi tomondan ham kamaytiring — tabiat
+botining video sifatini `NATURE_MAX_VIDEO_QUALITY_PX` orqali pasaytirish (masalan
+4K/3840 o'rniga 1920 yoki 1280) ham xotira sarfini sezilarli kamaytiradi (quyida
+alohida bo'limda tushuntirilgan).
 
 **Tabiat boti — 4 soatlik mavzu rejimi**: har 30 daqiqada post qiladi, lekin MAVZUNI
 (joyni) har 4 soatda bir marta yangilaydi — shu 4 soatlik oyna ichida bir xil joyning 8
@@ -144,6 +159,28 @@ bot_hub/
   (hub root) bo'lishi kerak.
 - **Telegram "chat not found" xatosi** — bot kanalga admin sifatida qo'shilmagan, yoki
   `*_TELEGRAM_CHANNEL_ID` noto'g'ri.
+- **Kripto boti hech narsa joylamayapti (log'da "KRIPTO BOT TO'XTATILDI: Binance bu
+  server joylashgan hududdan...")** — bu Binance'ning O'ZINING geografik cheklovi
+  (HTTP 451), sizning kodingiz yoki `.env`'ingizdagi xato emas. Binance ko'plab
+  hudud/IP manzillardan (ayniqsa AQSh, va ko'pincha Render/Railway/AWS/GCP kabi bulut
+  xizmatlari IP diapazonlaridan) kirishni butunlay taqiqlaydi. Yechimlar:
+  1. Render xizmatingizni **boshqa hududga** ko'chiring (masalan Frankfurt yoki
+     Singapur — AQSh hududlariga qaraganda ko'pincha bloklanmaydi). Render'da xizmat
+     sozlamalaridan "Region"ni o'zgartirish mumkin (ba'zan xizmatni qayta yaratish
+     kerak bo'ladi).
+  2. Agar bu ham yordam bermasa (Binance ba'zi bulut provayderlarini hudud farqisiz
+     bloklaydi), ma'lumot manbasini Binance'dan boshqa (masalan CoinGecko) API'ga
+     almashtirish kerak bo'ladi — bu esa `bots/crypto/binance_api.py`da qo'shimcha
+     ishlov talab qiladi (funding rate/OI/long-short kabi fyuchers ko'rsatkichlari
+     CoinGecko'da yo'q, faqat narx/hajm bor).
+- **"exceeded its memory limit" / "out of memory" (Render, Railway va h.k.)** —
+  eng ehtimolli sabab: tabiat botining 4K video qayta kodlashi (ffmpeg) ko'p operativ
+  xotira talab qiladi. Ikkita narsani sinab ko'ring (ikkalasi ham birga ishlatilishi
+  mumkin): (1) `.env`'da `NATURE_MAX_VIDEO_QUALITY_PX=1280` qiling (video sifatini
+  pasaytiradi, xotira sarfini kamaytiradi); (2) `HUB_MAX_CONCURRENT_JOBS=1` ekanini
+  tekshiring (standart shunday — botlar bir vaqtda ishlamasin). Ikkalasi ham yordam
+  bermasa, serveringizning operativ xotirasini oshiring (masalan Render'da Standard
+  tarifga o'ting).
 - **Kripto/futbol kartalarida matn juda kichik/standart ko'rinishda chiqyapti** —
   `fonts-dejavu-core` o'rnatilmagan. `sudo apt install fonts-dejavu-core` qiling.
 - **Bitta bot doim xato beryapti, boshqalari ishlayapti** — bu normal, hub dizayni

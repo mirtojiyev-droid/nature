@@ -11,14 +11,28 @@ bot tokeni, kanal ID'si va sozlamalariga ega (.env'da alohida prefikslar bilan).
 xato bersa ham (masalan Binance vaqtincha ishlamasa), boshqalari ta'sirlanmaydi — har bir
 "job" o'zining try/except ichida ishlaydi.
 
-MUHIM (ip-oqim/threading haqida): har bir bot o'z ALOHIDA ip-oqimida (thread) ishga
-tushiriladi, bittasi (masalan tabiat boti, ffmpeg bilan video qayta kodlab, bir necha
-daqiqa band bo'lishi mumkin) ikkinchisini (masalan kripto botini, aynan shu daqiqada post
-qilishi kerak bo'lgan) KECHIKTIRMASLIGI uchun. Har bir botning o'zi uchun alohida qulf
-(Lock) bor — shu bot allaqachon ishlab turgan bo'lsa (masalan oldingi ishga tushirish hali
-tugamagan bo'lsa), shu bot safar shunchaki o'tkazib yuboriladi (ikkita nusxasi bir vaqtda
-ishlab, bir xil faylni ustma-ust yozib qo'ymasligi uchun) — lekin bu boshqa botlarga
-ta'sir qilmaydi.
+MUHIM (ip-oqim/threading va operativ xotira haqide): har bir bot o'z ALOHIDA
+ip-oqimida (thread) ishga tushiriladi, bittasi (masalan tabiat boti, ffmpeg bilan video
+qayta kodlab, bir necha daqiqa band bo'lishi mumkin) ikkinchisini (masalan kripto
+botini, aynan shu daqiqada post qilishi kerak bo'lgan) KECHIKTIRMASLIGI uchun.
+
+LEKIN: agar uchala bot BIR VAQTDA ishlasa (masalan hub ishga tushgan zahoti, yoki
+tabiat va kripto botlarining jadvali tasodifan bir xil daqiqaga to'g'ri kelib qolsa),
+ularning operativ xotira sarfi QO'SHILIB ketadi — bu, ayniqsa Render/Railway kabi
+platformalarning arzon tariflarida (odatda 512MB-1GB), "out of memory" xatosiga olib
+kelishi mumkin (ffmpeg 4K video qayta kodlashda o'zi bir necha yuz MB talab qilishi
+mumkin). Shuning uchun `HUB_MAX_CONCURRENT_JOBS` (.env) orqali BIR VAQTDA nechta bot
+ishlashi mumkinligini cheklaymiz:
+  - Standart (va kam xotirali serverlar uchun tavsiya etiladigan) qiymat: 1 — ya'ni
+    botlar HAR DOIM birin-ketin ishlaydi, hech qachon bir vaqtda ishlamaydi (xavfsiz,
+    lekin bittasi band bo'lsa boshqasi biroz kutadi).
+  - Agar serveringizda operativ xotira yetarli bo'lsa (masalan 2GB+), buni 2 yoki 3'ga
+    oshirib, botlarning bir-birini kutmasdan parallel ishlashiga ruxsat berishingiz
+    mumkin (tezroq, lekin xotira cho'qqisi balandroq).
+Bundan tashqari, har bir bot uchun alohida qulf (Lock) ham bor — shu bot allaqachon
+ishlab turgan bo'lsa (masalan interval juda qisqa qilib qo'yilsa-yu, oldingi ishga
+tushirish hali tugamagan bo'lsa), shu bot safar shunchaki o'tkazib yuboriladi (o'zining
+ikkita nusxasi bir vaqtda ishlab, bir xil faylni ustma-ust yozib qo'ymasligi uchun).
 
 Ishga tushirish: `python main.py` (bu papkadan, hub root'idan). Doimiy (24/7) ishlashi
 uchun `bot-hub.service` (systemd) orqali joylang — README.md'ga qarang.
@@ -58,9 +72,14 @@ def _env_int(name: str, default: int) -> int:
 
 # Har bir bot uchun alohida qulf — bitta botning ikkita nusxasi BIR VAQTDA ishlab
 # ketmasligi uchun (masalan interval juda qisqa qilib qo'yilsa-yu, oldingi ishga
-# tushirish hali tugamagan bo'lsa). Turli botlar bir-birining qulfiga tegmaydi, shuning
-# uchun parallel ishlashda davom etadi.
+# tushirish hali tugamagan bo'lsa).
 _locks = {"tabiat": threading.Lock(), "kripto": threading.Lock(), "futbol": threading.Lock()}
+
+# Bir vaqtning o'zida nechta bot ISHLASHI (fn() bajarilishi) mumkinligini cheklovchi
+# umumiy semafor — operativ xotirani nazoratda ushlab turish uchun. Standart 1 =
+# botlar hech qachon bir vaqtda ishlamaydi (kam xotirali serverlar uchun xavfsiz).
+_MAX_CONCURRENT_JOBS = max(1, _env_int("HUB_MAX_CONCURRENT_JOBS", 1))
+_concurrency_semaphore = threading.Semaphore(_MAX_CONCURRENT_JOBS)
 
 
 def job(name: str, fn) -> None:
@@ -72,8 +91,13 @@ def job(name: str, fn) -> None:
         logger.warning("[%s] oldingi ishga tushirish hali tugamagan — bu safar o'tkazib yuboriladi.", name)
         return
     try:
-        logger.info("[%s] ishga tushmoqda...", name)
-        fn()
+        # Boshqa bot(lar) allaqachon ruxsat etilgan maksimal sonda ishlab turgan bo'lsa,
+        # shu yerda NAVBATDA kutadi (o'tkazib yubormaydi) — operativ xotira nazoratda
+        # qolishi uchun, HUB_MAX_CONCURRENT_JOBS qancha bo'lsa shuncha bot bir vaqtda
+        # ishlaydi, qolganlari o'z navbatini kutadi.
+        with _concurrency_semaphore:
+            logger.info("[%s] ishga tushmoqda...", name)
+            fn()
     except Exception:  # noqa: BLE001 - hub hech qachon shu sababdan to'xtamasligi kerak
         logger.exception("[%s] kutilmagan xatolik yuz berdi, keyingi safar qayta urinamiz.", name)
     else:
