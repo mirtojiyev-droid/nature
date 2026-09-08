@@ -116,7 +116,7 @@ def threaded_job(name: str, fn) -> None:
 def main() -> None:
     nature_interval = _env_int("NATURE_INTERVAL_MINUTES", 30)
     crypto_interval = _env_int("CRYPTO_INTERVAL_MINUTES", 60)
-    football_interval = _env_int("FOOTBALL_INTERVAL_MINUTES", 240)  # standart: har 4 soatda
+    football_interval = _env_int("FOOTBALL_INTERVAL_MINUTES", 60)  # standart: har soatda (trivia posti uchun)
 
     if os.getenv("NATURE_TELEGRAM_CHANNEL_ID"):
         schedule.every(nature_interval).minutes.do(threaded_job, "tabiat", run_nature)
