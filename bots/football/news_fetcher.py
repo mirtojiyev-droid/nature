@@ -5,6 +5,8 @@ from urllib.parse import quote
 
 import feedparser
 
+from shared.translator import translate_to_uzbek
+
 logger = logging.getLogger(__name__)
 
 NEWS_FEEDS = [
@@ -13,7 +15,7 @@ NEWS_FEEDS = [
 ]
 
 
-def fetch_latest_news(limit: int = 5) -> list[dict]:
+def fetch_latest_news(limit: int = 5, translate: bool = True) -> list[dict]:
     items = []
     for feed_url in NEWS_FEEDS:
         try:
@@ -40,4 +42,14 @@ def fetch_latest_news(limit: int = 5) -> list[dict]:
         if item["title"] not in seen:
             seen.add(item["title"])
             unique.append(item)
-    return unique[:limit]
+    unique = unique[:limit]
+
+    if translate:
+        # BBC manbasi ingliz tilida keladi — o'zbekchaga tarjima qilinadi. Google
+        # News manbasi (hl=uz) allaqachon o'zbek tilida — translate_to_uzbek endi
+        # manba tilini avtomatik aniqlagani (source="auto") uchun bu holatda ham
+        # xavfsiz (allaqachon o'zbekcha matnni buzib qo'ymaydi).
+        for item in unique:
+            item["title"] = translate_to_uzbek(item["title"])
+
+    return unique

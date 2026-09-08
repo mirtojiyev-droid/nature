@@ -148,7 +148,7 @@ def run_once() -> int:
     if enable_news:
         logger.info("Futbol yangiliklari olinmoqda (ilgari joylanmaganlari)...")
         try:
-            all_news = fetch_latest_news(news_count)
+            all_news = fetch_latest_news(news_count, translate=translate_enabled)
             already_posted = state.get_posted_ids("posted_news")
             new_news = [n for n in all_news if n["link"] not in already_posted]
             caption = build_news_caption(new_news)

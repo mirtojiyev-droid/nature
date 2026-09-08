@@ -79,6 +79,7 @@ def run_once() -> int:
     volume_multiplier = _env_float("CRYPTO_VOLUME_MULTIPLIER", 3.0)
     enable_breakout = _env_bool("CRYPTO_ENABLE_BREAKOUT", True)
     enable_news = _env_bool("CRYPTO_ENABLE_NEWS", True)
+    translate_news = _env_bool("CRYPTO_TRANSLATE_TO_UZBEK", True)
 
     poster = TelegramPoster(bot_token, channel_id)
 
@@ -165,7 +166,7 @@ def run_once() -> int:
     if enable_news:
         logger.info("So'nggi kripto yangiliklari olinmoqda...")
         try:
-            news_items = fetch_latest_news(news_count)
+            news_items = fetch_latest_news(news_count, translate=translate_news)
             caption = build_news_caption(news_items)
             if caption:
                 if poster.post_text(caption):

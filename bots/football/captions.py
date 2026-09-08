@@ -29,7 +29,7 @@ def build_result_caption(match: dict) -> str:
             lines.append(f"⚽ {g['minute']}' {html.escape(g['player'])} ({html.escape(team)})")
         if not match.get("goalsComplete"):
             lines.append("")
-            lines.append("<i>.</i>")
+            lines.append("<i>Eslatma: gol tafsilotlari to'liq bo'lmasligi mumkin (manba ma'lumoti yetarli emas).</i>")
     lines.append("")
     lines.append(format_hashtags(_match_hashtags(match)))
     return "\n".join(lines)

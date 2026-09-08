@@ -8,6 +8,7 @@ import logging
 import feedparser
 
 from shared.hashtags import format_hashtags
+from shared.translator import translate_to_uzbek
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,7 @@ NEWS_FEEDS = [
 ]
 
 
-def fetch_latest_news(limit: int = 5) -> list[dict]:
+def fetch_latest_news(limit: int = 5, translate: bool = True) -> list[dict]:
     items = []
     for feed_url in NEWS_FEEDS:
         try:
@@ -44,7 +45,16 @@ def fetch_latest_news(limit: int = 5) -> list[dict]:
         if item["title"] not in seen:
             seen.add(item["title"])
             unique.append(item)
-    return unique[:limit]
+    unique = unique[:limit]
+
+    if translate:
+        # Sarlavhalar ingliz tilida keladi (CoinDesk/Cointelegraph) — kanalning
+        # o'zbek tilidagi auditoriyasi uchun tarjima qilamiz. Havola (link) tarjima
+        # qilinmaydi, faqat ko'rinadigan sarlavha matni.
+        for item in unique:
+            item["title"] = translate_to_uzbek(item["title"])
+
+    return unique
 
 
 def build_news_caption(news_items: list[dict], header: str = "So'nggi kripto yangiliklari") -> str | None:
