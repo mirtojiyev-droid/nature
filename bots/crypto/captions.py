@@ -29,7 +29,7 @@ def build_breakout_caption(candidate: dict, rank: int, notes: list[str]) -> str:
         f"24s: {signed_num(candidate['price_change_pct'], 2)}%",
         *notes,
         "",
-        "<i>Bu statistik naqsh — kafolat emas. Narx ko'tarilishi ham, ko'tarilmasligi ham mumkin. Moliyaviy maslahat emas.</i>",
+        "<i></i>",
         "",
         format_hashtags([*CHANNEL_HASHTAGS, symbol, "breakout", "kuzatuv"]),
     ]
