@@ -1,28 +1,30 @@
 """
-Bot Hub — uchta mustaqil Telegram botni (tabiat, kripto, futbol) BITTA jarayonda,
-bitta VPS'da, har biri o'z vaqt jadvali bilan ishlaydigan qilib boshqaradi.
+Bot Hub — TO'RTTA mustaqil Telegram botni (tabiat, kripto, futbol, YouTube-repost)
+BITTA jarayonda, bitta VPS'da, har biri o'z vaqt jadvali bilan ishlaydigan qilib
+boshqaradi.
 
-Nega bitta jarayon: uchtasi ham asosan tarmoq so'rovlari bilan band (CPU emas), shuning
-uchun bitta kichik VPS'da (masalan 1 CPU / 1-2GB RAM) barchasi bemalol sig'adi — uchta
+Nega bitta jarayon: barchasi asosan tarmoq so'rovlari bilan band (CPU emas), shuning
+uchun bitta kichik VPS'da (masalan 1 CPU / 1-2GB RAM) barchasi bemalol sig'adi — to'rtta
 alohida serverga pul to'lash shart emas.
 
-Har bir bot (`bots/nature`, `bots/crypto`, `bots/football`) TO'LIQ mustaqil: o'zining
-bot tokeni, kanal ID'si va sozlamalariga ega (.env'da alohida prefikslar bilan). Bittasi
-xato bersa ham (masalan Binance vaqtincha ishlamasa), boshqalari ta'sirlanmaydi — har bir
-"job" o'zining try/except ichida ishlaydi.
+Har bir bot (`bots/nature`, `bots/crypto`, `bots/football`, `bots/youtube`) TO'LIQ
+mustaqil: o'zining bot tokeni, kanal ID'si va sozlamalariga ega (.env'da alohida
+prefikslar bilan). Bittasi xato bersa ham (masalan Binance vaqtincha ishlamasa),
+boshqalari ta'sirlanmaydi — har bir "job" o'zining try/except ichida ishlaydi.
 
 MUHIM (ip-oqim/threading va operativ xotira haqide): har bir bot o'z ALOHIDA
-ip-oqimida (thread) ishga tushiriladi, bittasi (masalan tabiat boti, ffmpeg bilan video
-qayta kodlab, bir necha daqiqa band bo'lishi mumkin) ikkinchisini (masalan kripto
-botini, aynan shu daqiqada post qilishi kerak bo'lgan) KECHIKTIRMASLIGI uchun.
+ip-oqimida (thread) ishga tushiriladi, bittasi (masalan tabiat boti ffmpeg bilan, yoki
+YouTube boti video yuklab olish bilan) bir necha daqiqa band bo'lishi mumkin, lekin bu
+ikkinchisini (masalan kripto botini, aynan shu daqiqada post qilishi kerak bo'lgan)
+KECHIKTIRMAYDI.
 
-LEKIN: agar uchala bot BIR VAQTDA ishlasa (masalan hub ishga tushgan zahoti, yoki
-tabiat va kripto botlarining jadvali tasodifan bir xil daqiqaga to'g'ri kelib qolsa),
-ularning operativ xotira sarfi QO'SHILIB ketadi — bu, ayniqsa Render/Railway kabi
-platformalarning arzon tariflarida (odatda 512MB-1GB), "out of memory" xatosiga olib
-kelishi mumkin (ffmpeg 4K video qayta kodlashda o'zi bir necha yuz MB talab qilishi
-mumkin). Shuning uchun `HUB_MAX_CONCURRENT_JOBS` (.env) orqali BIR VAQTDA nechta bot
-ishlashi mumkinligini cheklaymiz:
+LEKIN: agar bir nechta bot BIR VAQTDA ishlasa (masalan hub ishga tushgan zahoti, yoki
+ikkita botning jadvali tasodifan bir xil daqiqaga to'g'ri kelib qolsa), ularning
+operativ xotira sarfi QO'SHILIB ketadi — bu, ayniqsa Render/Railway kabi platformalarning
+arzon tariflarida (odatda 512MB-1GB), "out of memory" xatosiga olib kelishi mumkin
+(ffmpeg 4K video qayta kodlashda yoki YouTube video yuklab olishda o'zi bir necha yuz
+MB talab qilishi mumkin). Shuning uchun `HUB_MAX_CONCURRENT_JOBS` (.env) orqali BIR
+VAQTDA nechta bot ishlashi mumkinligini cheklaymiz:
   - Standart (va kam xotirali serverlar uchun tavsiya etiladigan) qiymat: 1 — ya'ni
     botlar HAR DOIM birin-ketin ishlaydi, hech qachon bir vaqtda ishlamaydi (xavfsiz,
     lekin bittasi band bo'lsa boshqasi biroz kutadi).
@@ -61,6 +63,7 @@ logger = logging.getLogger("hub")
 from bots.crypto import run_once as run_crypto  # noqa: E402
 from bots.football import run_once as run_football  # noqa: E402
 from bots.nature import run_once as run_nature  # noqa: E402
+from bots.youtube import run_once as run_youtube  # noqa: E402
 
 
 def _env_int(name: str, default: int) -> int:
@@ -73,7 +76,10 @@ def _env_int(name: str, default: int) -> int:
 # Har bir bot uchun alohida qulf — bitta botning ikkita nusxasi BIR VAQTDA ishlab
 # ketmasligi uchun (masalan interval juda qisqa qilib qo'yilsa-yu, oldingi ishga
 # tushirish hali tugamagan bo'lsa).
-_locks = {"tabiat": threading.Lock(), "kripto": threading.Lock(), "futbol": threading.Lock()}
+_locks = {
+    "tabiat": threading.Lock(), "kripto": threading.Lock(),
+    "futbol": threading.Lock(), "youtube": threading.Lock(),
+}
 
 # Bir vaqtning o'zida nechta bot ISHLASHI (fn() bajarilishi) mumkinligini cheklovchi
 # umumiy semafor — operativ xotirani nazoratda ushlab turish uchun. Standart 1 =
@@ -117,6 +123,7 @@ def main() -> None:
     nature_interval = _env_int("NATURE_INTERVAL_MINUTES", 30)
     crypto_interval = _env_int("CRYPTO_INTERVAL_MINUTES", 60)
     football_interval = _env_int("FOOTBALL_INTERVAL_MINUTES", 60)  # standart: har soatda (trivia posti uchun)
+    youtube_interval = _env_int("YOUTUBE_INTERVAL_MINUTES", 120)  # standart: har 2 soatda
 
     if os.getenv("NATURE_TELEGRAM_CHANNEL_ID"):
         schedule.every(nature_interval).minutes.do(threaded_job, "tabiat", run_nature)
@@ -135,6 +142,12 @@ def main() -> None:
         logger.info("Futbol boti har %d daqiqada ishlaydi.", football_interval)
     else:
         logger.info("Futbol boti o'chirilgan (FOOTBALL_TELEGRAM_CHANNEL_ID sozlanmagan).")
+
+    if os.getenv("YOUTUBE_TELEGRAM_CHANNEL_ID"):
+        schedule.every(youtube_interval).minutes.do(threaded_job, "youtube", run_youtube)
+        logger.info("YouTube-repost boti har %d daqiqada ishlaydi.", youtube_interval)
+    else:
+        logger.info("YouTube-repost boti o'chirilgan (YOUTUBE_TELEGRAM_CHANNEL_ID sozlanmagan).")
 
     if not schedule.get_jobs():
         logger.error("Hech qanday bot sozlanmagan — .env faylini to'ldiring (README.md'ga qarang). To'xtatildi.")

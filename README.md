@@ -1,7 +1,8 @@
-# Bot Hub — Tabiat + Kripto + Futbol (bitta jarayon)
+# Bot Hub — Tabiat + Kripto + Futbol + YouTube-repost (bitta jarayon)
 
-Uchta Telegram botini (tabiat kanali, kripto bozor, futbol) **bitta Python jarayonida**,
-bitta VPS'da, har biri o'z vaqt jadvali va o'z kanaliga ishlaydigan qilib boshqaradi.
+To'rtta Telegram botini (tabiat kanali, kripto bozor, futbol, YouTube trend-repost)
+**bitta Python jarayonida**, bitta VPS'da, har biri o'z vaqt jadvali va o'z kanaliga
+ishlaydigan qilib boshqaradi.
 
 - **Tabiat boti** — avvalgi `nature_channel_bot` loyihasi, o'zgarishsiz (`bots/nature/`).
 - **Kripto boti** — avvalgi `kripto_bot_mobil.html` (telefonda qo'lda ishga tushiriladigan
@@ -12,9 +13,14 @@ bitta VPS'da, har biri o'z vaqt jadvali va o'z kanaliga ishlaydigan qilib boshqa
   Natija/fixture/yangilik postlari endi TAKRORLANMAYDI (state.py orqali kuzatiladi).
   Qo'shimcha: har soatda bitta qiziqarli futbol fakti va kuniga ~2 marta futbolchi
   sharhi (ikkalasi ham Wikipedia manbali) — pastga qarang.
+- **YouTube-repost boti** (`bots/youtube/`) — YouTube'ning rasmiy TREND jadvalidan
+  (so'z bo'yicha qidiruv EMAS — youtube.com/feed/trending bilan bir xil manba) mos
+  videolarni yuklab, Telegram kanalga joylaydi. Standart bo'yicha **har 2 soatda**
+  ishga tushadi. Batafsil: `bots/youtube/README.md`.
 
-Uchtasi ham asosan tarmoq so'rovlari bilan band (CPU emas), shuning uchun eng arzon VPS
-(1 CPU / 1GB RAM) darajasida ham bemalol ishlaydi.
+To'rttasi ham asosan tarmoq so'rovlari bilan band (CPU emas), shuning uchun eng arzon
+VPS (1 CPU / 1GB RAM) darajasida ham bemalol ishlaydi — YouTube boti video
+yuklab-qayta-kodlashi mumkinligi uchun ozroq qo'shimcha disk joyi kerak bo'lishi mumkin.
 
 ## Nima o'zgardi (HTML asboblarga nisbatan)
 
@@ -36,8 +42,10 @@ sudo apt update && sudo apt install -y python3 python3-venv python3-pip fonts-de
 ```
 
 `fonts-dejavu-core` — kripto/futbol kartalaridagi matnni chizish uchun kerak (ko'p
-Ubuntu/Debian tizimlarida allaqachon o'rnatilgan bo'ladi). Tabiat boti uchun `ffmpeg` ham
-kerak (ixtiyoriy, fon musiqasi va format moslashtirish uchun):
+Ubuntu/Debian tizimlarida allaqachon o'rnatilgan bo'ladi). `ffmpeg` tabiat boti uchun
+(fon musiqasi va format moslashtirish, ixtiyoriy) HAMDA **YouTube-repost boti uchun
+SHART** (yt-dlp video/audio oqimlarini birlashtirib mp4 qilish uchun ishlatadi —
+bo'lmasa yuklab olish xato beradi yoki ovozsiz chiqadi):
 
 ```
 sudo apt install -y ffmpeg
@@ -72,6 +80,10 @@ Har bir bot uchun:
   (faqat narx/hajm agregatori). Faqat narx, 24soatlik o'zgarish va RSI ko'rsatiladi.
 - Tabiat boti uchun: [pexels.com/api](https://www.pexels.com/api/) (shart) va
   [pixabay.com/api/docs](https://pixabay.com/api/docs/) (ixtiyoriy) kalitlari.
+- YouTube-repost boti uchun: [console.cloud.google.com](https://console.cloud.google.com)'da
+  loyiha yaratib, **YouTube Data API v3**ni yoqing va API kalit oling —
+  `YOUTUBE_API_KEY`'ga qo'ying. Bepul kvota kuniga 10,000 birlik — standart 2 soatlik
+  interval (kuniga ~12 marta ishga tushish) bilan bemalol yetadi.
 
 **Bitta bot, uchta kanal**: agar 3 ta alohida bot yaratishni istamasangiz, faqat umumiy
 `TELEGRAM_BOT_TOKEN`ni to'ldiring va har bir botning o'z `*_TELEGRAM_BOT_TOKEN` qatorini
@@ -116,8 +128,9 @@ avtomatik o'zini tiklab, davom etadi.
 ## Har bir botning jadvali
 
 `.env`'dagi `NATURE_INTERVAL_MINUTES` / `CRYPTO_INTERVAL_MINUTES` /
-`FOOTBALL_INTERVAL_MINUTES` orqali sozlanadi (standart: tabiat — 30 daqiqa, kripto — 60
-daqiqa, futbol — 240 daqiqa/4 soat). Uch bot bir-biridan mustaqil — bittasining intervali
+`FOOTBALL_INTERVAL_MINUTES` / `YOUTUBE_INTERVAL_MINUTES` orqali sozlanadi (standart:
+tabiat — 30 daqiqa, kripto — 60 daqiqa, futbol — 60 daqiqa/soatlik, YouTube-repost —
+120 daqiqa/2 soat). Har bir bot bir-biridan mustaqil — bittasining intervali
 boshqasiga ta'sir qilmaydi, va bittasi xato bersa (masalan Binance vaqtincha ishlamay
 qolsa), faqat o'sha bot safar o'tkazib yuboriladi, boshqalari davom etadi.
 
@@ -166,22 +179,37 @@ chiqadi, so'ng yangi joyga o'tadi. Bu oraliqni o'zgartirish uchun
   maqolasining boshlang'ich qismini (odatda pozitsiya, o'ynash uslubi va klub tilga
   olinadi) tarjima qilib beradi, bu ancha ishonchli va tekshirib bo'ladigan yondashuv.
 
+**YouTube-repost boti — trend jadvali + til muvozanati**: so'z (matn) bo'yicha qidiruv
+QILMAYDI — faqat YouTube'ning rasmiy TREND jadvalidan (`YOUTUBE_REGION_CODE` +
+`YOUTUBE_EXTRA_REGION_CODES`) foydalanadi. Har ishga tushganda (standart: har 2 soatda)
+5 ta post joylaydi, uchta turkumga bo'lingan holda — 1 tasi hozir eng tez o'sayotgan
+("trend"), 2 tasi eng ko'p ko'rilgan, 2 tasi eng yangi (`YOUTUBE_POSTS_*` orqali
+sozlanadi). `YOUTUBE_PREFERRED_LANGUAGES`/`YOUTUBE_AVOID_LANGUAGES` orqali kanal
+auditoriyasiga (standart: ingliz/rus/o'zbek) mos til ustunlik oladi, `YOUTUBE_MIN_UZBEK_PER_RUN`
+orqali har safar kamida bitta o'zbekcha post kafolatlanadi. Allaqachon joylangan video
+(`posted.json`) hech qachon qayta joylanmaydi. Batafsil (hashteglar, kategoriya
+tanlash, qo'lda bitta video joylash `--url` bilan va h.k.): `bots/youtube/README.md`.
+
 ## Papka tuzilishi
 
 ```
 bot_hub/
-├── main.py                 # Scheduler — uchala botni boshqaradi
+├── main.py                 # Scheduler — barcha botlarni boshqaradi
 ├── requirements.txt
 ├── .env / .env.example
 ├── bot-hub.service          # systemd unit fayli
 ├── hub.log                  # ishga tushgach avtomatik yaratiladi
 ├── shared/
-│   ├── telegram_poster.py   # Umumiy Telegram yuborish funksiyalari
-│   └── fonts.py             # Karta rasmlari uchun umumiy shrift yuklovchi
+│   ├── telegram_poster.py   # Umumiy Telegram yuborish funksiyalari (qayta urinish bilan)
+│   ├── wikipedia.py          # Umumiy Wikipedia ma'lumot olish (tabiat, futbol)
+│   ├── translator.py         # Umumiy o'zbek tiliga tarjima (zaxira xizmat bilan)
+│   ├── hashtags.py            # Umumiy hashteg yasovchi
+│   └── fonts.py                # Karta rasmlari uchun umumiy shrift yuklovchi
 └── bots/
     ├── nature/               # Tabiat kanali boti (avvalgi nature_channel_bot)
-    ├── crypto/                # Kripto bozor boti
-    └── football/              # Futbol boti
+    ├── crypto/                # Kripto bozor boti (CoinGecko)
+    ├── football/               # Futbol boti
+    └── youtube/                 # YouTube trend-repost boti
 ```
 
 ## Muammolarni bartaraf etish
@@ -208,9 +236,21 @@ bot_hub/
   tarifga o'ting).
 - **Kripto/futbol kartalarida matn juda kichik/standart ko'rinishda chiqyapti** —
   `fonts-dejavu-core` o'rnatilmagan. `sudo apt install fonts-dejavu-core` qiling.
+- **YouTube boti "HTTP Error 403: Forbidden" xatosi beryapti** — bu YouTube'ning
+  yt-dlp'ga qarshi tez-tez o'zgarib turadigan cheklovlari sabab, sizning sozlamangizdagi
+  xato emas. `pip install -U yt-dlp` bilan yangilang (muntazam avtomatik yangilab
+  turish tavsiya etiladi — `bots/youtube/README.md`dagi "Muntazam ishga tushirish"
+  bo'limiga qarang). Yordam bermasa, `YOUTUBE_YTDLP_COOKIES_FILE` orqali cookie fayl
+  bering.
+- **YouTube boti hech narsa joylamayapti ("barchasi allaqachon joylangan")** — bu
+  normal, xato emas: trend jadvali tez-tez o'zgarmaydi. Bot avtomatik ravishda
+  eskilik/davomiylik chegaralarini kengaytirib qayta urinadi; shundan keyin ham
+  hech narsa topilmasa, `YOUTUBE_EXTRA_REGION_CODES`ga qo'shimcha mintaqa qo'shing.
+- **"ffmpeg not found" (YouTube botida)** — `ffmpeg` o'rnatilmagan (`sudo apt install
+  ffmpeg`) — bu bot uchun IXTIYORIY emas, SHART (video/audio oqimlarini birlashtirish
+  uchun).
 - **Bitta bot doim xato beryapti, boshqalari ishlayapti** — bu normal, hub dizayni
   aynan shunday: bitta bot muammosi boshqalarini to'xtatmaydi. `hub.log`'dan aniq
   xatoni toping.
-- Tabiat botiga xos muammolar (video/rasm sifati, ffmpeg va h.k.) uchun
-  `bots/nature/` ichidagi eski `README.md`'dagi "Muammolarni bartaraf etish"
-  bo'limi ham amal qiladi (fayl nomlari bir xil qolgan, faqat joylashuvi o'zgargan).
+- Tabiat va YouTube botlariga xos qo'shimcha muammolar/sozlamalar uchun mos
+  `bots/<nomi>/README.md` fayllariga qarang.
