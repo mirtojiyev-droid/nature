@@ -22,18 +22,31 @@ MUHIM (yana bir tuzatilgan xato): MyMemory xizmati Google'dan farqli o'laroq odd
 birga) kodni talab qiladi, aks holda "No support for the provided language" xatosi
 bilan darhol rad etadi (hatto tarmoqqa chiqmasdan). Shuning uchun MyMemory'ga
 maxsus "uz-UZ" ishlatiladi (Google uchun esa oddiy "uz" yetarli va to'g'ri).
+
+MUHIM (uchinchi tuzatilgan xato): MyMemory manba tili sifatida "auto"ni ham QABUL
+QILMAYDI — lekin bu daf'atan (kod darajasida) xato bermaydi, balki so'rovni
+serverga yuborib, keyin "'AUTO' IS AN INVALID SOURCE LANGUAGE ..." degan xato
+matnini xuddi TARJIMA natijasi sifatida qaytaradi! Bu — birinchi (Google xato-sahifa)
+muammosi bilan bir xil turkumdagi xato, faqat boshqa xizmatda. Shuning uchun MyMemory
+uchun manba tili doim ANIQ "en-GB" (ingliz) qilib beriladi — bizning deyarli barcha
+tarjima manbalarimiz (Wikipedia, CoinDesk, Cointelegraph, BBC) shunday bo'lgani uchun
+bu to'g'ri standart. (Futbol botining o'zbekcha Google News manbasi — kamdan-kam
+holat — MyMemory FAQAT Google butunlay ishlamay qolganda, zaxira sifatida chaqirilgani
+uchun, kamdan-kam holatdagi noto'g'ri manba-til taxmini qabul qilingan.)
 """
 import logging
 
 logger = logging.getLogger(__name__)
 
-# Google'ning (yoki boshqa xizmatning) xato sahifasiga xos, tarjima natijasida
-# UMUMAN uchramasligi kerak bo'lgan iboralar — shulardan biri topilsa, natija chin
-# tarjima emas, xato sahifasi ekani aniq.
+# Google'ning yoki MyMemory'ning xato-javobiga xos, tarjima natijasida UMUMAN
+# uchramasligi kerak bo'lgan iboralar — shulardan biri topilsa, natija chin tarjima
+# emas, xizmatning o'z xato-xabari ekani aniq.
 _ERROR_SIGNATURES = (
     "error 500", "error 404", "server error", "that's an error",
     "there was an error", "please try again later", "that's all we know",
     "<html", "<!doctype", "bad gateway", "service unavailable",
+    "invalid source language", "invalid target language", "is an invalid",
+    "langpair", "no support for the provided language",
 )
 
 
@@ -78,8 +91,9 @@ def translate_to_uzbek(text: str) -> str:
     if result:
         return result
 
-    result = _try_backend("MyMemory", lambda: MyMemoryTranslator(source="auto", target="uz-UZ"), text)
+    result = _try_backend("MyMemory", lambda: MyMemoryTranslator(source="en-GB", target="uz-UZ"), text)
     if result:
+        logger.info("Google muvaffaqiyatsiz bo'lgani uchun MyMemory (zaxira xizmat) orqali tarjima qilindi.")
         return result
 
     logger.warning("Barcha tarjima xizmatlari muvaffaqiyatsiz bo'ldi, asl (tarjima qilinmagan) matn ishlatiladi.")

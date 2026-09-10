@@ -114,12 +114,29 @@ def download_video(video_url: str, download_dir: str = "downloads",
         "progress_hooks": [_make_progress_hook()],
     }
     if cookies_file:
-        try:
-            writable_cookies = os.path.join(download_dir, "cookies_writable.txt")
-            shutil.copyfile(cookies_file, writable_cookies)
-            ydl_opts["cookiefile"] = writable_cookies
-        except OSError as exc:
-            log.warning("Cookie faylini yozish mumkin bo'lgan joyga nusxalab bo'lmadi (%s), cookiesiz davom etiladi: %s", cookies_file, exc)
+        if not os.path.exists(cookies_file):
+            # MUHIM DIAGNOSTIKA: cookies_file berilgan (.env'da YTDLP_COOKIES_FILE
+            # bo'sh emas), lekin ko'rsatilgan yo'lda fayl UMUMAN topilmadi — bu
+            # "Sign in to confirm you're not a bot" xatosi hali ham chiqishining eng
+            # ehtimolli sababi: Render'da Secret File noto'g'ri nomlangan yoki
+            # YOUTUBE_YTDLP_COOKIES_FILE'dagi yo'l noto'g'ri yozilgan.
+            log.warning(
+                "YOUTUBE_YTDLP_COOKIES_FILE='%s' ko'rsatilgan, LEKIN bu yo'lda fayl topilmadi — "
+                "cookiesiz davom etiladi (YouTube'ning bot-tekshiruvi bloklashi mumkin). "
+                "Render'da Secret File nomi va YOUTUBE_YTDLP_COOKIES_FILE qiymati bir xil "
+                "ekanini tekshiring (masalan /etc/secrets/cookies.txt).",
+                cookies_file,
+            )
+        else:
+            try:
+                writable_cookies = os.path.join(download_dir, "cookies_writable.txt")
+                shutil.copyfile(cookies_file, writable_cookies)
+                ydl_opts["cookiefile"] = writable_cookies
+                log.info("Cookie fayli topildi va ishlatilmoqda (%s, %d bayt).", cookies_file, os.path.getsize(cookies_file))
+            except OSError as exc:
+                log.warning("Cookie faylini yozish mumkin bo'lgan joyga nusxalab bo'lmadi (%s), cookiesiz davom etiladi: %s", cookies_file, exc)
+    else:
+        log.info("Cookie fayli berilmagan (YOUTUBE_YTDLP_COOKIES_FILE bo'sh) — cookiesiz davom etiladi.")
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
