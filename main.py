@@ -40,10 +40,13 @@ Ishga tushirish: `python main.py` (bu papkadan, hub root'idan). Doimiy (24/7) is
 uchun `bot-hub.service` (systemd) orqali joylang — README.md'ga qarang.
 """
 import logging
+import json
 import os
 import sys
 import threading
 import time
+from datetime import datetime, timedelta
+from pathlib import Path
 
 import schedule
 from dotenv import load_dotenv
@@ -87,6 +90,39 @@ _locks = {
 _MAX_CONCURRENT_JOBS = max(1, _env_int("HUB_MAX_CONCURRENT_JOBS", 1))
 _concurrency_semaphore = threading.Semaphore(_MAX_CONCURRENT_JOBS)
 
+# Har bir botning OXIRGI marta haqiqatan ishga tushirilgan vaqti shu faylga yoziladi
+# (diskka, jarayon xotirasiga emas) — MUHIM: `schedule` kutubxonasining o'zi bu
+# ma'lumotni faqat JARAYON XOTIRASIDA saqlaydi, ya'ni hub jarayoni QAYTA ISHGA
+# TUSHGANDA (Render qayta deploy qilganda, yoki avval ko'rgan xotira yetishmasligi
+# sababli avtomatik qayta ishga tushganda) bu holat YO'QOLADI — va hub "ishga tushgan
+# zahoti barcha botlarni bir marta darhol ishga tushirish" mantig'i tufayli, HAR BIR
+# qayta ishga tushishda barcha botlar QAYTADAN, oxirgi marta qachon ishlagani UMUMAN
+# HISOBGA OLINMASDAN darhol ishga tushirilardi. Agar server tez-tez qayta ishga
+# tushsa (masalan xotira muammosi tufayli), bu "botlar vaqtga qaramasdan, tasodifiy
+# ishlayapti" bo'lib ko'rinishiga olib kelardi. Shu faylga yozib qo'yish orqali, qayta
+# ishga tushgandan keyin ham hub "oxirgi marta qachon ishlaganini" biladi va shunga
+# yarasha to'g'ri vaqtda keyingi ishga tushirishni rejalashtiradi.
+_SCHEDULE_STATE_FILE = Path(__file__).parent / "hub_schedule_state.json"
+
+
+def _load_last_run_times() -> dict:
+    if not _SCHEDULE_STATE_FILE.exists():
+        return {}
+    try:
+        return json.loads(_SCHEDULE_STATE_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("Jadval holatini o'qib bo'lmadi, boshidan boshlanadi: %s", exc)
+        return {}
+
+
+def _save_last_run_time(name: str) -> None:
+    state = _load_last_run_times()
+    state[name] = time.time()
+    try:
+        _SCHEDULE_STATE_FILE.write_text(json.dumps(state), encoding="utf-8")
+    except OSError as exc:
+        logger.warning("Jadval holatini saqlab bo'lmadi: %s", exc)
+
 
 def job(name: str, fn) -> None:
     """Har bir botni shu wrapper orqali ishga tushiramiz — biror bot ichida kutilmagan
@@ -97,6 +133,10 @@ def job(name: str, fn) -> None:
         logger.warning("[%s] oldingi ishga tushirish hali tugamagan — bu safar o'tkazib yuboriladi.", name)
         return
     try:
+        # Ishga tushirish DARHOL (fn() hali navbatda kutayotgan bo'lsa ham) qayd etiladi
+        # — schedule kutubxonasining o'zi ham "last_run"ni aynan shu daqiqada (chaqiruv
+        # boshida, tugashini kutmasdan) belgilaydi, shu bilan izchil turish uchun.
+        _save_last_run_time(name)
         # Boshqa bot(lar) allaqachon ruxsat etilgan maksimal sonda ishlab turgan bo'lsa,
         # shu yerda NAVBATDA kutadi (o'tkazib yubormaydi) — operativ xotira nazoratda
         # qolishi uchun, HUB_MAX_CONCURRENT_JOBS qancha bo'lsa shuncha bot bir vaqtda
@@ -119,44 +159,60 @@ def threaded_job(name: str, fn) -> None:
     threading.Thread(target=job, args=(name, fn), name=f"bot-{name}", daemon=True).start()
 
 
+def setup_schedule() -> bool:
+    """Barcha yoqilgan botlarni `schedule`ga ro'yxatdan o'tkazadi va kerak bo'lsa
+    darhol (yoki keyinroq, agar yaqinda ishlagan bo'lsa) ishga tushiradi. Kamida bitta
+    bot sozlangan bo'lsa True, aks holda False qaytaradi (sinov uchun ham qulay —
+    `main()`dagi cheksiz tsiklga kirmasdan alohida chaqirsa bo'ladi)."""
+    bot_configs = [
+        ("tabiat", "NATURE_TELEGRAM_CHANNEL_ID", "NATURE_INTERVAL_MINUTES", 30, run_nature, "Tabiat"),
+        ("kripto", "CRYPTO_TELEGRAM_CHANNEL_ID", "CRYPTO_INTERVAL_MINUTES", 60, run_crypto, "Kripto"),
+        ("futbol", "FOOTBALL_TELEGRAM_CHANNEL_ID", "FOOTBALL_INTERVAL_MINUTES", 60, run_football, "Futbol"),
+        ("youtube", "YOUTUBE_TELEGRAM_CHANNEL_ID", "YOUTUBE_INTERVAL_MINUTES", 120, run_youtube, "YouTube-repost"),
+    ]
+
+    last_run_times = _load_last_run_times()
+    now = time.time()
+    scheduled_count = 0
+
+    for name, channel_env, interval_env, default_interval, fn, label in bot_configs:
+        if not os.getenv(channel_env):
+            logger.info("%s boti o'chirilgan (%s sozlanmagan).", label, channel_env)
+            continue
+
+        interval = _env_int(interval_env, default_interval)
+        j = schedule.every(interval).minutes.do(threaded_job, name, fn)
+        scheduled_count += 1
+        logger.info("%s boti har %d daqiqada ishlaydi.", label, interval)
+
+        # MUHIM: agar bu bot yaqinda (o'z intervalidan kamroq vaqt oldin) allaqachon
+        # ishlagan bo'lsa — bu ma'lumot oldingi (hozir qayta ishga tushgan) jarayon
+        # ishidan qolgan bo'lishi mumkin — uni HOZIR yana darhol ishga tushirmaymiz,
+        # aksincha, `schedule`ning navbatdagi ishga tushirish vaqtini ham shunga mos
+        # ravishda TO'G'RILAYMIZ (registratsiya vaqtidan emas, aslida OXIRGI marta
+        # ishlagan vaqtdan boshlab hisoblab). Shu bilan qayta-qayta ishga tushishlar
+        # (masalan xotira muammosi tufayli) botlarni belgilangan jadvaldan tezroq-tezroq
+        # ishga tushirib yubormaydi.
+        last = last_run_times.get(name)
+        if last is not None and (now - last) < interval * 60:
+            next_run_at = datetime.fromtimestamp(last) + timedelta(minutes=interval)
+            j.next_run = next_run_at
+            remaining_min = (next_run_at.timestamp() - now) / 60
+            logger.info(
+                "  -> %s yaqinda (%.0f daqiqa oldin) allaqachon ishlagan (jarayon qayta ishga tushgan bo'lishi mumkin) — "
+                "darhol emas, %.0f daqiqadan keyin ishga tushadi.",
+                label, (now - last) / 60, remaining_min,
+            )
+        else:
+            threaded_job(name, fn)
+
+    return scheduled_count > 0
+
+
 def main() -> None:
-    nature_interval = _env_int("NATURE_INTERVAL_MINUTES", 30)
-    crypto_interval = _env_int("CRYPTO_INTERVAL_MINUTES", 60)
-    football_interval = _env_int("FOOTBALL_INTERVAL_MINUTES", 60)  # standart: har soatda (trivia posti uchun)
-    youtube_interval = _env_int("YOUTUBE_INTERVAL_MINUTES", 120)  # standart: har 2 soatda
-
-    if os.getenv("NATURE_TELEGRAM_CHANNEL_ID"):
-        schedule.every(nature_interval).minutes.do(threaded_job, "tabiat", run_nature)
-        logger.info("Tabiat boti har %d daqiqada ishlaydi.", nature_interval)
-    else:
-        logger.info("Tabiat boti o'chirilgan (NATURE_TELEGRAM_CHANNEL_ID sozlanmagan).")
-
-    if os.getenv("CRYPTO_TELEGRAM_CHANNEL_ID"):
-        schedule.every(crypto_interval).minutes.do(threaded_job, "kripto", run_crypto)
-        logger.info("Kripto boti har %d daqiqada ishlaydi.", crypto_interval)
-    else:
-        logger.info("Kripto boti o'chirilgan (CRYPTO_TELEGRAM_CHANNEL_ID sozlanmagan).")
-
-    if os.getenv("FOOTBALL_TELEGRAM_CHANNEL_ID"):
-        schedule.every(football_interval).minutes.do(threaded_job, "futbol", run_football)
-        logger.info("Futbol boti har %d daqiqada ishlaydi.", football_interval)
-    else:
-        logger.info("Futbol boti o'chirilgan (FOOTBALL_TELEGRAM_CHANNEL_ID sozlanmagan).")
-
-    if os.getenv("YOUTUBE_TELEGRAM_CHANNEL_ID"):
-        schedule.every(youtube_interval).minutes.do(threaded_job, "youtube", run_youtube)
-        logger.info("YouTube-repost boti har %d daqiqada ishlaydi.", youtube_interval)
-    else:
-        logger.info("YouTube-repost boti o'chirilgan (YOUTUBE_TELEGRAM_CHANNEL_ID sozlanmagan).")
-
-    if not schedule.get_jobs():
+    if not setup_schedule():
         logger.error("Hech qanday bot sozlanmagan — .env faylini to'ldiring (README.md'ga qarang). To'xtatildi.")
         return
-
-    # Ishga tushgan zahoti sozlangan botlarning har birini bir marta darhol (parallel,
-    # bir-birini kutmasdan) ishga tushiramiz — navbatdagi intervalni kutib o'tirmasdan.
-    for j in schedule.get_jobs():
-        j.job_func()
 
     logger.info("Hub ishga tushdi, botlar o'z jadvali bo'yicha ishlaydi. To'xtatish uchun Ctrl+C.")
     while True:
