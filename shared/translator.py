@@ -33,10 +33,20 @@ tarjima manbalarimiz (Wikipedia, CoinDesk, Cointelegraph, BBC) shunday bo'lgani 
 bu to'g'ri standart. (Futbol botining o'zbekcha Google News manbasi — kamdan-kam
 holat — MyMemory FAQAT Google butunlay ishlamay qolganda, zaxira sifatida chaqirilgani
 uchun, kamdan-kam holatdagi noto'g'ri manba-til taxmini qabul qilingan.)
+MUHIM (to'rtinchi tuzatilgan xato): MyMemory xizmati bitta so'rovda FAQAT 500
+belgigacha matnni qabul qiladi — uzunroq matn (masalan futbolchi sharhi/trivia uchun
+Wikipedia'dan olingan 3-4 gapli parcha, ba'zan 500 belgidan oshadi) "Text length need
+to be between 0 and 500 characters" xatosi bilan BUTUNLAY rad etiladi. Shuning uchun
+uzun matnlar avval ~450 belgidan oshmaydigan gap-bo'laklarga (jumla chegaralaridan)
+bo'lib, HAR BIRI alohida tarjima qilinib, keyin qayta birlashtiriladi.
 """
 import logging
 
 logger = logging.getLogger(__name__)
+
+# MyMemory'ning bitta so'rovdagi qattiq belgi chegarasi (500) dan xavfsiz pastroq —
+# jumla oxirida to'xtash uchun ozgina joy qoldiradi.
+_MYMEMORY_CHUNK_LIMIT = 450
 
 # Google'ning yoki MyMemory'ning xato-javobiga xos, tarjima natijasida UMUMAN
 # uchramasligi kerak bo'lgan iboralar — shulardan biri topilsa, natija chin tarjima
@@ -76,22 +86,75 @@ def _try_backend(backend_name: str, make_translator, text: str) -> str | None:
     return translated
 
 
+def _split_into_chunks(text: str, limit: int) -> list[str]:
+    """Matnni `limit` belgidan oshmaydigan bo'laklarga, imkon qadar JUMLA
+    chegaralaridan bo'lib beradi (tarjima sifatini saqlash uchun so'z o'rtasidan
+    kesishdan qochiladi). Agar bitta jumlaning o'zi ham limitdan uzun bo'lsa
+    (kamdan-kam), so'z chegarasidan kesiladi — hech qachon limitdan oshib ketmaydi."""
+    if len(text) <= limit:
+        return [text]
+
+    raw_sentences = text.replace("! ", "!|").replace("? ", "?|").replace(". ", ".|").split("|")
+    chunks: list[str] = []
+    current = ""
+    for sentence in raw_sentences:
+        candidate = f"{current} {sentence}".strip() if current else sentence
+        if len(candidate) <= limit:
+            current = candidate
+        else:
+            if current:
+                chunks.append(current)
+            current = sentence
+    if current:
+        chunks.append(current)
+
+    final_chunks: list[str] = []
+    for chunk in chunks:
+        while len(chunk) > limit:
+            cut = chunk.rfind(" ", 0, limit)
+            if cut <= 0:
+                cut = limit
+            final_chunks.append(chunk[:cut].strip())
+            chunk = chunk[cut:].strip()
+        if chunk:
+            final_chunks.append(chunk)
+    return final_chunks
+
+
+def _try_mymemory_chunked(text: str):
+    """MyMemory 500 belgidan uzun matnni butunlay rad etgani uchun (haqiqiy voqeada
+    aniqlangan xato — pastdagi modul docstring'iga qarang), uzun matnni bo'laklarga
+    bo'lib, har birini alohida tarjima qilib, natijalarni birlashtiradi. Bo'laklardan
+    BIRORTASI ham muvaffaqiyatsiz bo'lsa, butun natija rad etiladi (aralash tilda —
+    yarim o'zbekcha, yarim inglizcha — post chiqib ketmasligi uchun)."""
+    from deep_translator import MyMemoryTranslator
+
+    chunks = _split_into_chunks(text, _MYMEMORY_CHUNK_LIMIT)
+    translated_chunks = []
+    for chunk in chunks:
+        result = _try_backend("MyMemory", lambda c=chunk: MyMemoryTranslator(source="en-GB", target="uz-UZ"), chunk)
+        if result is None:
+            return None
+        translated_chunks.append(result)
+    return " ".join(translated_chunks)
+
+
 def translate_to_uzbek(text: str) -> str:
     """Matnni o'zbek tiliga tarjima qiladi. Avval Google, muvaffaqiyatsiz/shubhali
-    bo'lsa MyMemory sinaladi. Ikkalasi ham muvaffaqiyatsiz bo'lsa, asl matn qaytariladi
-    (botni to'xtatmaslik uchun).
+    bo'lsa MyMemory sinaladi (kerak bo'lsa bo'laklarga bo'lib). Ikkalasi ham
+    muvaffaqiyatsiz bo'lsa, asl matn qaytariladi (botni to'xtatmaslik uchun).
 
     Manba tili "auto" (avtomatik aniqlash) — QATTIQ "en" (ingliz) emas, chunki bu
     funksiya turli manbalardan kelgan matnlarga qo'llaniladi: ba'zilari doim ingliz
     tilida (masalan Wikipedia), lekin ba'zilari (masalan futbol botining ba'zi
     yangilik manbalari) allaqachon o'zbek tilida bo'lishi mumkin."""
-    from deep_translator import GoogleTranslator, MyMemoryTranslator
+    from deep_translator import GoogleTranslator
 
     result = _try_backend("Google Translate", lambda: GoogleTranslator(source="auto", target="uz"), text)
     if result:
         return result
 
-    result = _try_backend("MyMemory", lambda: MyMemoryTranslator(source="en-GB", target="uz-UZ"), text)
+    result = _try_mymemory_chunked(text)
     if result:
         logger.info("Google muvaffaqiyatsiz bo'lgani uchun MyMemory (zaxira xizmat) orqali tarjima qilindi.")
         return result

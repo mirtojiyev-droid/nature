@@ -112,6 +112,12 @@ def download_video(video_url: str, download_dir: str = "downloads",
         "retries": 3,
         "fragment_retries": 3,
         "progress_hooks": [_make_progress_hook()],
+        # "Sign in to confirm you're not a bot" xatosini kamaytirish uchun — YouTube'ning
+        # oddiy veb-klient uchun bot-tekshiruvi datacenter (bulut) IP manzillarida ancha
+        # qattiqroq ishlaydi. Android klientini simulyatsiya qilish ko'pincha (har doim
+        # emas — YouTube bu xatti-harakatni tez-tez o'zgartirib turadi) shu tekshiruvni
+        # chetlab o'tadi. Muvaffaqiyatsiz bo'lsa, oddiy "web" klientiga tushadi.
+        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
     }
     if cookies_file:
         if not os.path.exists(cookies_file):
