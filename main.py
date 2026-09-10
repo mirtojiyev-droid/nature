@@ -48,6 +48,7 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import fcntl
 import schedule
 from dotenv import load_dotenv
 
@@ -76,13 +77,10 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
-# Har bir bot uchun alohida qulf — bitta botning ikkita nusxasi BIR VAQTDA ishlab
-# ketmasligi uchun (masalan interval juda qisqa qilib qo'yilsa-yu, oldingi ishga
-# tushirish hali tugamagan bo'lsa).
-_locks = {
-    "tabiat": threading.Lock(), "kripto": threading.Lock(),
-    "futbol": threading.Lock(), "youtube": threading.Lock(),
-}
+# Har bir bot uchun qulf fayli shu papkaga yoziladi (fcntl.flock — jarayonlar
+# ORASIDA ham ishlaydi, oddiy threading.Lock'dan farqli — pastdagi job() funksiyasidagi
+# izohga qarang).
+_LOCK_DIR = Path(__file__).parent
 
 # Bir vaqtning o'zida nechta bot ISHLASHI (fn() bajarilishi) mumkinligini cheklovchi
 # umumiy semafor — operativ xotirani nazoratda ushlab turish uchun. Standart 1 =
@@ -127,10 +125,28 @@ def _save_last_run_time(name: str) -> None:
 def job(name: str, fn) -> None:
     """Har bir botni shu wrapper orqali ishga tushiramiz — biror bot ichida kutilmagan
     xatolik chiqsa ham (kod xatosi, tarmoq muammosi va h.k.), scheduler butunlay
-    to'xtab qolmaydi, faqat shu bot safar o'tkazib yuboriladi."""
-    lock = _locks[name]
-    if not lock.acquire(blocking=False):
-        logger.warning("[%s] oldingi ishga tushirish hali tugamagan — bu safar o'tkazib yuboriladi.", name)
+    to'xtab qolmaydi, faqat shu bot safar o'tkazib yuboriladi.
+
+    MUHIM (tuzatilgan xato — ba'zida ikki marta post qilinishi): avval bu yerda faqat
+    `threading.Lock` ishlatilardi — bu FAQAT bitta jarayon ICHIDA himoya qiladi. Render
+    (yoki boshqa platforma) qayta deploy qilganda, ESKI va YANGI jarayon bir necha
+    soniya BIR VAQTDA ishlab turishi mumkin — ikkalasi ham o'zining alohida xotirasida
+    "men band emasman" deb o'ylab, ikkalasi ham bir xil botni ishga tushirib, IKKI
+    MARTA bir xil narsani post qilib yuborishi mumkin edi. Shuning uchun endi jarayonlar
+    ORASIDA ham ishlaydigan FAYL qulfi (`fcntl.flock`) ishlatiladi — ikkinchi jarayon
+    qulfni ololmay, darhol (kutmasdan) o'zining urinishini bekor qiladi."""
+    lock_path = _LOCK_DIR / f".{name}.lock"
+    lock_file = open(lock_path, "w")
+    try:
+        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        logger.warning(
+            "[%s] boshqa jarayon (yoki shu jarayonning oldingi ishga tushirishi) hali band — "
+            "bu safar o'tkazib yuboriladi (masalan qayta deploy paytida eski/yangi jarayon "
+            "bir zumga bir vaqtda ishlab turgan bo'lishi mumkin).",
+            name,
+        )
+        lock_file.close()
         return
     try:
         # Ishga tushirish DARHOL (fn() hali navbatda kutayotgan bo'lsa ham) qayd etiladi
@@ -149,7 +165,8 @@ def job(name: str, fn) -> None:
     else:
         logger.info("[%s] tugadi.", name)
     finally:
-        lock.release()
+        fcntl.flock(lock_file, fcntl.LOCK_UN)
+        lock_file.close()
 
 
 def threaded_job(name: str, fn) -> None:

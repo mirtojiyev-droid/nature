@@ -3,6 +3,7 @@ Video yuklab olish moduli (yt-dlp asosida).
 """
 import logging
 import os
+import shutil
 import time
 
 import yt_dlp
@@ -68,6 +69,16 @@ def download_video(video_url: str, download_dir: str = "downloads",
         fayl yo'lini shu yerga bering (masalan .env'dagi
         YTDLP_COOKIES_FILE orqali).
 
+        MUHIM (tuzatilgan xato): yt-dlp har bir ishlatishdan keyin YouTube'ning
+        yangilangan sessiya cookie'larini SHU FAYLGA QAYTA YOZISHGA urinadi.
+        Agar `cookies_file` faqat-o'qish-uchun joyda bo'lsa (masalan Render'ning
+        "Secret Files" — bu doim shunday, xavfsizlik uchun read-only), yozish
+        urinishi "Read-only file system" xatosi bilan qulab tushardi va BUTUN
+        botni to'xtatib qo'yardi (DownloadError sifatida ushlanmagani uchun).
+        Shuning uchun bu funksiya cookie faylini avval YOZISH MUMKIN BO'LGAN
+        joyga (download_dir ichiga) nusxalab, yt-dlp'ga o'sha nusxani beradi —
+        asl (read-only) fayl hech qachon o'zgartirilmaydi/buzilmaydi.
+
     Format tanlash: avval Telegram limitidan (50MB) kichikroq (~45MB)
     fayl beradigan formatlar qidiriladi; agar YouTube bunday format uchun
     aniq hajm ma'lumotini bermasa (ba'zi formatlarda shunday), 480p
@@ -103,7 +114,12 @@ def download_video(video_url: str, download_dir: str = "downloads",
         "progress_hooks": [_make_progress_hook()],
     }
     if cookies_file:
-        ydl_opts["cookiefile"] = cookies_file
+        try:
+            writable_cookies = os.path.join(download_dir, "cookies_writable.txt")
+            shutil.copyfile(cookies_file, writable_cookies)
+            ydl_opts["cookiefile"] = writable_cookies
+        except OSError as exc:
+            log.warning("Cookie faylini yozish mumkin bo'lgan joyga nusxalab bo'lmadi (%s), cookiesiz davom etiladi: %s", cookies_file, exc)
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -120,3 +136,8 @@ def download_video(video_url: str, download_dir: str = "downloads",
             return filepath
     except yt_dlp.utils.DownloadError as exc:
         raise DownloadError(f"yt-dlp video yuklay olmadi ({video_url}): {exc}") from exc
+    except OSError as exc:
+        # Masalan cookie faylini saqlashda kutilmagan fayl-tizimi xatosi (yt-dlp
+        # __exit__ bosqichida) — DownloadError EMAS, lekin xuddi shunday: bitta
+        # nomzod muvaffaqiyatsiz bo'lishi butun botni yiqitmasligi kerak.
+        raise DownloadError(f"Fayl tizimi xatoligi ({video_url}): {exc}") from exc

@@ -1,5 +1,6 @@
-"""O'yin natijasi/fixture kartasini "translyatsiya tabloi" uslubida PNG rasm sifatida
-chizadi — futbol_bot_mobil.html'dagi Canvas mantiqining Pillow porti.
+"""O'yin natijasi/fixture kartasini zamonaviy "translyatsiya tabloi" uslubida PNG
+rasm sifatida chizadi — gradient fon, yumshoq soyalar va porlash effektlari bilan
+(shared/canvas.py umumiy vositalaridan foydalanadi).
 
 MUHIM SODDALASHTIRISH: JS versiyasida jamoa gerbini (crest) olish uchun to'rtta CORS
 proxy ketma-ket sinalardi (brauzer cheklovi tufayli). Server tomonidagi Python
@@ -11,16 +12,19 @@ from io import BytesIO
 import requests
 from PIL import Image, ImageDraw
 
+from shared.canvas import diagonal_gradient, draw_soft_glow_circle, paste_soft_shadow
 from shared.fonts import get_font
 
 logger = logging.getLogger(__name__)
 
 CARD_W = 1080
-CARD_PAD = 26
+CARD_PAD = 34
 CARD_H_BASE = 480
-COLOR_STATUS_FINISHED = "#00D97E"
+COLOR_STATUS_FINISHED = "#22E37E"
 COLOR_STATUS_UPCOMING = "#FFC94D"
-COLOR_GOAL_TEXT = "#F2C94C"
+COLOR_GOAL_TEXT = "#F2D98C"
+COLOR_CARD_TEXT = "#F3F5FA"
+COLOR_SUBTEXT = "#9AA6C3"
 
 _crest_cache: dict[str, bytes | None] = {}
 
@@ -72,7 +76,11 @@ def _circular_crop(img: Image.Image, size: int) -> Image.Image:
 
 def _draw_crest(base_img: Image.Image, draw: ImageDraw.ImageDraw, cx: int, cy: int, radius: int,
                  badge_url: str | None, fallback_text: str, accent_color: str) -> None:
-    draw.ellipse([cx - radius - 6, cy - radius - 6, cx + radius + 6, cy + radius + 6], fill="#FFFFFF")
+    # Gerb ortida yumshoq "porlash" — e'tiborni markazga tortadi, kartaga chuqurlik beradi
+    draw_soft_glow_circle(base_img, cx, cy, radius + 22, accent_color, opacity=70, blur=28)
+
+    draw.ellipse([cx - radius - 8, cy - radius - 8, cx + radius + 8, cy + radius + 8], fill="#FFFFFF")
+    draw.ellipse([cx - radius - 8, cy - radius - 8, cx + radius + 8, cy + radius + 8], outline=accent_color, width=3)
 
     raw = _fetch_crest_bytes(badge_url)
     if raw:
@@ -104,82 +112,105 @@ def _draw_match_card(
     home_line_count = len(home_goals_shown) + (1 if home_extra > 0 else 0)
     away_line_count = len(away_goals_shown) + (1 if away_extra > 0 else 0)
     max_goal_lines = max(home_line_count, away_line_count)
-    card_h = CARD_H_BASE + (max_goal_lines * 24 + 16 if max_goal_lines > 0 else 0)
+    card_h = CARD_H_BASE + (max_goal_lines * 26 + 16 if max_goal_lines > 0 else 0)
 
     total_h = card_h + 2 * CARD_PAD
-    img = Image.new("RGB", (CARD_W, total_h), "#0F1220")
-    draw = ImageDraw.Draw(img)
+    img = Image.new("RGBA", (CARD_W, total_h), "#04050A")
 
     card_x, card_y, card_w = CARD_PAD, CARD_PAD, CARD_W - 2 * CARD_PAD
-    draw.rounded_rectangle([card_x, card_y, card_x + card_w, card_y + card_h], radius=26, fill=league_meta["dark"])
 
-    # Liga pill (yuqori chap)
-    pill_font = get_font(20, "bold")
-    pill_pad_x, pill_h = 18, 40
+    # Yumshoq soya, so'ng gradient fon (liganing to'q rangidan biroz yorug'roq nuqtadan
+    # to'liq to'q rangga — chuqurlik va zamonaviylik hissi uchun)
+    paste_soft_shadow(img, [card_x, card_y, card_x + card_w, card_y + card_h], 30, opacity=140, offset=(0, 14), blur=30)
+    grad = diagonal_gradient((card_w, card_h), _lighten(league_meta["dark"], 0.35), league_meta["dark"])
+    mask = Image.new("L", (card_w, card_h), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, card_w, card_h], radius=30, fill=255)
+    img.paste(grad, (card_x, card_y), mask)
+
+    draw = ImageDraw.Draw(img)
+
+    # Liga pill (yuqori chap) — endi ozgina soya bilan, ko'proq "qavariq" ko'rinadi
+    pill_font = get_font(21, "bold")
+    pill_pad_x, pill_h = 22, 44
     pill_text_w = draw.textlength(league_meta["short"], font=pill_font)
     pill_w = pill_text_w + pill_pad_x * 2
-    pill_x, pill_y = card_x + 28, card_y + 28
+    pill_x, pill_y = card_x + 30, card_y + 30
     draw.rounded_rectangle([pill_x, pill_y, pill_x + pill_w, pill_y + pill_h], radius=pill_h / 2, fill=league_meta["accent"])
-    draw.text((pill_x + pill_pad_x, pill_y + pill_h / 2), league_meta["short"], font=pill_font, fill="#0B0D16", anchor="lm")
+    draw.text((pill_x + pill_w / 2, pill_y + pill_h / 2), league_meta["short"], font=pill_font, fill="#0B0D16", anchor="mm")
 
     # Sana (yuqori o'ng)
-    date_font = get_font(20)
-    draw.text((card_x + card_w - 28, pill_y + pill_h / 2), date_str, font=date_font, fill="#9AA0B4", anchor="rm")
+    date_font = get_font(21)
+    draw.text((card_x + card_w - 30, pill_y + pill_h / 2), date_str, font=date_font, fill=COLOR_SUBTEXT, anchor="rm")
 
     # Crestlar
-    mid_y = card_y + 220
-    crest_r = 70
-    home_cx = card_x + 190
-    away_cx = card_x + card_w - 190
+    mid_y = card_y + 224
+    crest_r = 72
+    home_cx = card_x + 196
+    away_cx = card_x + card_w - 196
     _draw_crest(img, draw, home_cx, mid_y, crest_r, home_badge_url, _initials(home_name), league_meta["accent"])
     _draw_crest(img, draw, away_cx, mid_y, crest_r, away_badge_url, _initials(away_name), league_meta["accent"])
 
     # Jamoa nomlari
-    name_font = get_font(26, "bold")
-    name_y = mid_y + crest_r + 44
-    draw.text((home_cx, name_y), _truncate_to_width(draw, home_name, 260, name_font), font=name_font, fill="#E8E9F3", anchor="ms")
-    draw.text((away_cx, name_y), _truncate_to_width(draw, away_name, 260, name_font), font=name_font, fill="#E8E9F3", anchor="ms")
+    name_font = get_font(27, "bold")
+    name_y = mid_y + crest_r + 48
+    draw.text((home_cx, name_y), _truncate_to_width(draw, home_name, 270, name_font), font=name_font, fill=COLOR_CARD_TEXT, anchor="ms")
+    draw.text((away_cx, name_y), _truncate_to_width(draw, away_name, 270, name_font), font=name_font, fill=COLOR_CARD_TEXT, anchor="ms")
 
-    # Gol urganlar (ism + daqiqa) — har bir jamoa ostida
-    # (Eslatma: emoji belgilar odatiy DejaVu Sans shriftida ko'rinmaydi — shuning uchun
-    # bu yerda faqat matn ishlatiladi, emoji faqat Telegram caption matnida ko'rinadi.)
+    # Gol urganlar (ism + daqiqa) — rangli nuqta + matn (emoji shrift muammosi tufayli
+    # ⚽ belgisi ATAYLAB ishlatilmaydi, buning o'rniga chizilgan nuqta ishlatiladi)
     if max_goal_lines > 0:
-        goal_font = get_font(16)
-        goals_start_y = name_y + 26
+        goal_font = get_font(17, "bold")
+        goals_start_y = name_y + 30
         for i, g in enumerate(home_goals_shown):
-            text = f"{g['minute']}' {_truncate_to_width(draw, _last_name(g['player']), 220, goal_font)}"
-            draw.text((home_cx, goals_start_y + i * 24), text, font=goal_font, fill=COLOR_GOAL_TEXT, anchor="ms")
+            gy = goals_start_y + i * 26
+            text = f"{g['minute']}'  {_truncate_to_width(draw, _last_name(g['player']), 200, goal_font)}"
+            draw.ellipse([home_cx - 130, gy - 5, home_cx - 122, gy + 3], fill=league_meta["accent"])
+            draw.text((home_cx - 112, gy - 1), text, font=goal_font, fill=COLOR_GOAL_TEXT, anchor="lm")
         if home_extra > 0:
-            draw.text((home_cx, goals_start_y + len(home_goals_shown) * 24), f"+{home_extra} ko'proq", font=goal_font, fill=COLOR_GOAL_TEXT, anchor="ms")
+            draw.text((home_cx, goals_start_y + len(home_goals_shown) * 26), f"+{home_extra} ko'proq", font=goal_font, fill=COLOR_GOAL_TEXT, anchor="ms")
         for i, g in enumerate(away_goals_shown):
-            text = f"{g['minute']}' {_truncate_to_width(draw, _last_name(g['player']), 220, goal_font)}"
-            draw.text((away_cx, goals_start_y + i * 24), text, font=goal_font, fill=COLOR_GOAL_TEXT, anchor="ms")
+            gy = goals_start_y + i * 26
+            text = f"{g['minute']}'  {_truncate_to_width(draw, _last_name(g['player']), 200, goal_font)}"
+            draw.ellipse([away_cx - 130, gy - 5, away_cx - 122, gy + 3], fill=league_meta["accent"])
+            draw.text((away_cx - 112, gy - 1), text, font=goal_font, fill=COLOR_GOAL_TEXT, anchor="lm")
         if away_extra > 0:
-            draw.text((away_cx, goals_start_y + len(away_goals_shown) * 24), f"+{away_extra} ko'proq", font=goal_font, fill=COLOR_GOAL_TEXT, anchor="ms")
+            draw.text((away_cx, goals_start_y + len(away_goals_shown) * 26), f"+{away_extra} ko'proq", font=goal_font, fill=COLOR_GOAL_TEXT, anchor="ms")
 
-    # Markaziy blok: hisob yoki VS
-    box_w, box_h = 220, 108
+    # Markaziy blok: hisob yoki VS — endi o'zining soyasi bilan, "suzib turgan" ko'rinishda
+    box_w, box_h = 232, 116
     box_x, box_y = card_x + card_w / 2 - box_w / 2, mid_y - box_h / 2
-    draw.rounded_rectangle([box_x, box_y, box_x + box_w, box_y + box_h], radius=20, fill="#FFFFFF")
+    paste_soft_shadow(img, [box_x, box_y, box_x + box_w, box_y + box_h], 22, opacity=120, offset=(0, 6), blur=16)
+    draw.rounded_rectangle([box_x, box_y, box_x + box_w, box_y + box_h], radius=22, fill="#FFFFFF")
 
     if center_type == "score":
-        draw.text((card_x + card_w / 2, mid_y), f"{home_score} - {away_score}", font=get_font(62, "bold"), fill="#0B0D16", anchor="mm")
+        draw.text((card_x + card_w / 2, mid_y), f"{home_score} - {away_score}", font=get_font(64, "bold"), fill="#0B0D16", anchor="mm")
     else:
-        draw.text((card_x + card_w / 2, mid_y - 16), "VS", font=get_font(40, "bold"), fill=league_meta["accent"], anchor="mm")
-        draw.text((card_x + card_w / 2, mid_y + 26), time_str or "", font=get_font(28, "bold"), fill="#0B0D16", anchor="mm")
+        draw.text((card_x + card_w / 2, mid_y - 18), "VS", font=get_font(38, "bold"), fill=league_meta["accent"], anchor="mm")
+        draw.text((card_x + card_w / 2, mid_y + 26), time_str or "", font=get_font(27, "bold"), fill="#0B0D16", anchor="mm")
 
     # Status pill (pastda)
-    status_font = get_font(22, "bold")
-    status_y = card_y + card_h - 46
+    status_font = get_font(23, "bold")
+    status_y = card_y + card_h - 48
     status_text_w = draw.textlength(status_text, font=status_font)
-    status_pill_w = status_text_w + 40
+    status_pill_w = status_text_w + 48
     status_pill_x = card_x + card_w / 2 - status_pill_w / 2
-    draw.rounded_rectangle([status_pill_x, status_y - 22, status_pill_x + status_pill_w, status_y + 22], radius=22, fill=status_color)
+    draw.rounded_rectangle([status_pill_x, status_y - 24, status_pill_x + status_pill_w, status_y + 24], radius=24, fill=status_color)
     draw.text((card_x + card_w / 2, status_y), status_text, font=status_font, fill="#0B0D16", anchor="mm")
 
     buf = BytesIO()
-    img.save(buf, format="PNG")
+    img.convert("RGB").save(buf, format="PNG")
     return buf.getvalue()
+
+
+def _lighten(hex_color: str, amount: float) -> str:
+    """Rangni oq tomon `amount` (0-1) nisbatida yorug'lashtiradi — gradient fonning
+    "yuqori-chap" nuqtasi uchun (liganing to'q rangidan biroz yorug'roq)."""
+    hex_color = hex_color.lstrip("#")
+    r, g, b = (int(hex_color[i:i + 2], 16) for i in (0, 2, 4))
+    r = round(r + (255 - r) * amount)
+    g = round(g + (255 - g) * amount)
+    b = round(b + (255 - b) * amount)
+    return f"#{r:02x}{g:02x}{b:02x}"
 
 
 def build_result_card_image(match: dict) -> bytes:

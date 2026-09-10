@@ -12,16 +12,20 @@ Har ishga tushganda (30 daqiqada bir):
      qirralari).
   3. Pexels'dan shu joy + qirra bo'yicha avval VIDEO (asosiy kontent, 4K'gacha), so'ng
      RASM qidiradi (Pexels -> Pixabay -> Wikimedia Commons ketma-ketligida).
-  4. Wikipedia'dan joy haqida umumiy ma'lumot oladi (bir xil mavzu uchun keshlanadi) va
-     kerak bo'lsa o'zbek tiliga tarjima qiladi.
-  5. Caption tayyorlab, kanalga videoni va rasmni (ikkalasini ham, topilsa) joylaydi.
-  6. Qirrani "ishlatildi" deb belgilaydi.
+  4. Caption tayyorlab (FAQAT joy nomi + qirra + hashteglar — pastga qarang), kanalga
+     videoni va rasmni (ikkalasini ham, topilsa) joylaydi.
+  5. Qirrani "ishlatildi" deb belgilaydi.
+
+MUHIM (ataylab olib tashlangan xususiyat): avval caption'da Wikipedia'dan olingan
+qisqacha ma'lumot (izoh) ham bo'lardi. Bu olib tashlandi — chunki ba'zan (masalan joy
+nomi bilan bir xil nomdagi kino/qo'shiq bo'lsa) noto'g'ri ma'lumot berish xavfi bor edi.
+Endi caption FAQAT joy nomi, qirra va hashteglar — hech qanday qo'shimcha matn yo'q,
+demak bunday xato ham UMUMAN mumkin emas.
 
 Bu modul mustaqil ishga tushirilishi ham mumkin (`python -m bots.nature.run`, hub papkasidan),
 lekin odatiy holatda hub'ning `main.py`'si buni scheduler orqali chaqiradi (README.md'ga qarang).
 """
 import html
-import json
 import logging
 import os
 import tempfile
@@ -31,7 +35,6 @@ from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 from .facets import FACETS, build_hashtags, build_query_variants
-from shared.wikipedia import InfoFetcher
 from .local_footage import find_local_video
 from .media_fetcher import MediaFetcher, download_file
 from .music_mixer import prepare_video_for_posting
@@ -41,61 +44,28 @@ from .state import get_current_theme, mark_facet_used, pick_next_facet
 from shared.telegram_poster import TelegramPoster
 from shared.hashtags import format_hashtags
 from .topics import get_topic_pool
-from shared.translator import translate_to_uzbek
 from .wikimedia_fetcher import WikimediaFetcher
 
 logger = logging.getLogger(__name__)
 
-SUMMARY_CACHE_FILE = Path(__file__).parent / "theme_summary_cache.json"
 
-
-def _get_cached_summary(theme: str, info: InfoFetcher, translate_enabled: bool) -> str | None:
-    """Bir xil mavzu uchun Wikipedia ma'lumotini (4 soatlik oyna davomida, har 30
-    daqiqada) qayta-qayta so'ramaslik uchun keshlaydi — faqat mavzu nomi bo'yicha
-    (sana emas) solishtiriladi: mavzu o'zgarishi bilan keshi avtomatik eskiradi,
-    o'zgarmasa (oyna davomida) qayta ishlatiladi."""
-    cache = {}
-    if SUMMARY_CACHE_FILE.exists():
-        try:
-            cache = json.loads(SUMMARY_CACHE_FILE.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            cache = {}
-
-    if cache.get("theme") == theme:
-        return cache.get("summary")
-
-    summary = info.fetch_summary(theme)
-    if translate_enabled and summary:
-        summary = translate_to_uzbek(summary)
-
-    try:
-        SUMMARY_CACHE_FILE.write_text(
-            json.dumps({"theme": theme, "summary": summary}, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-    except OSError as exc:
-        logger.warning("Summary keshini saqlab bo'lmadi: %s", exc)
-
-    return summary
-
-
-def build_caption(theme: str, facet: dict, summary: str | None) -> str:
+def build_caption(theme: str, facet: dict) -> str:
     # Telegram parse_mode="HTML" bilan yuborilgani uchun, dinamik matndagi &, <, >
     # kabi belgilar albatta escape qilinishi shart — aks holda Telegram "can't parse
     # entities" xatosi bilan butun postni rad etadi.
+    #
+    # MUHIM (ataylab soddalashtirilgan): avval bu yerda Wikipedia'dan olingan qisqacha
+    # ma'lumot (summary) ham qo'shilardi. LEKIN bu xavfli bo'lib chiqdi — Wikipedia
+    # qidiruvi ba'zan noto'g'ri (masalan xuddi shu nomdagi kino/qo'shiq haqidagi)
+    # maqolaga tushib qolishi mumkin edi (topics.py'dagi filtr tuzatilgan bo'lsa-da,
+    # bunday xato boshqa ko'rinishda ham chiqishi mumkin). Shuning uchun endi caption
+    # FAQAT joy nomi va qirra — hech qanday qo'shimcha matn/izoh yo'q, demak noto'g'ri
+    # ma'lumot berish xavfi ham UMUMAN yo'q.
     theme_esc = html.escape(theme)
     facet_esc = html.escape(facet["label"])
     header = f"🌍 <b>{theme_esc}</b> — {facet_esc}"
-    if summary:
-        sentences = summary.split(". ")
-        short = ". ".join(sentences[:3]).strip()
-        if not short.endswith("."):
-            short += "."
-        body = f"\n\n{html.escape(short)}"
-    else:
-        body = ""
     footer = "\n\n" + format_hashtags(build_hashtags(theme, facet))
-    return header + body + footer
+    return header + footer
 
 
 def _fetch_with_fallback(sources: list[tuple[str, callable]], variants: list[str], kind: str) -> tuple[str, str] | None:
@@ -124,7 +94,6 @@ def run_once() -> int:
     channel_id = os.getenv("NATURE_TELEGRAM_CHANNEL_ID")
     pexels_key = os.getenv("PEXELS_API_KEY")
     pixabay_key = os.getenv("PIXABAY_API_KEY")
-    translate_enabled = os.getenv("NATURE_TRANSLATE_TO_UZBEK", "true").lower() == "true"
     post_photo_too = os.getenv("NATURE_POST_PHOTO_TOO", "true").lower() == "true"
 
     missing = [
@@ -151,7 +120,6 @@ def run_once() -> int:
     media = MediaFetcher(pexels_key)
     pixabay = PixabayFetcher(pixabay_key) if pixabay_key else None
     wikimedia = WikimediaFetcher()  # API kalit shart emas, doim faol qo'shimcha manba
-    info = InfoFetcher()
 
     def _video_sources(prefer_vertical: bool):
         # Pexels avval sinaladi (asosiy manba), Pixabay ikkinchi zaxira, Wikimedia Commons
@@ -171,8 +139,7 @@ def run_once() -> int:
         sources.append(("Wikimedia Commons", lambda q, pv=prefer_vertical: wikimedia.fetch_photo(q, prefer_vertical=pv)))
         return sources
 
-    summary = _get_cached_summary(theme, info, translate_enabled)
-    caption = build_caption(theme, facet, summary)
+    caption = build_caption(theme, facet)
 
     poster = TelegramPoster(bot_token, channel_id)
 
