@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>YT havola &rarr; Telegram</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#14110F; --bg2:#1B1613; --surface:#211A15; --surface2:#2A211A;
+    --edge:#3A2E24; --edge-soft:#2A211A;
+    --amber:#E8A33D; --amber-soft:#F0C384; --teal:#4FB0C6; --teal-soft:#8FD3E2;
+    --rose:#E0665A; --green:#6FBF73;
+    --text:#F2E9DD; --text-dim:#B7A996; --text-faint:#7C7062;
+    --radius:18px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0; background:var(--bg); color:var(--text);
+    font-family:'IBM Plex Sans',system-ui,sans-serif; -webkit-font-smoothing:antialiased;}
+  body{padding-bottom:64px;}
+  h1,h2,h3{font-family:'Fraunces',Georgia,serif; font-weight:600; margin:0; letter-spacing:-0.01em;}
+
+  header{padding:28px 20px 20px; background:
+      radial-gradient(120% 100% at 15% 0%, #2A2018 0%, var(--bg) 60%);
+    border-bottom:1px solid var(--edge-soft);}
+  header .eyebrow{color:var(--amber); font-size:13px; font-weight:600; letter-spacing:.04em; margin-bottom:6px;}
+  header h1{font-size:24px; color:var(--text); line-height:1.15;}
+  header p{color:var(--text-dim); font-size:14px; margin-top:8px; line-height:1.5; max-width:44ch;}
+
+  main{padding:16px;}
+  section.card{background:var(--surface); border:1px solid var(--edge-soft); border-radius:var(--radius);
+    padding:18px; margin-bottom:14px;}
+  section.card > h2{font-size:17px; color:var(--amber-soft); margin-bottom:4px;}
+  section.card > .sub{color:var(--text-faint); font-size:12.5px; margin-bottom:14px; line-height:1.5;}
+
+  .field{margin-bottom:12px;}
+  .field label{display:block; font-size:12.5px; color:var(--text-dim); margin-bottom:5px; font-weight:500;}
+  .field input[type=text], .field input[type=password], .field textarea{
+    width:100%; background:var(--bg2); border:1px solid var(--edge); border-radius:10px;
+    color:var(--text); padding:11px 12px; font-size:14.5px; font-family:inherit;}
+  .field textarea{resize:vertical; min-height:110px; line-height:1.5;}
+  .field .hint{color:var(--text-faint); font-size:11.5px; margin-top:4px;}
+  .field.row{display:flex; gap:10px;}
+  .field.row > div{flex:1;}
+
+  .btn{display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    border:none; border-radius:12px; padding:13px 18px; font-size:14.5px; font-weight:600;
+    font-family:inherit; cursor:pointer; width:100%; transition:transform .08s ease;}
+  .btn:active{transform:scale(0.98);}
+  .btn-primary{background:linear-gradient(135deg,#F0C384,#E8A33D); color:#1B1310;}
+  .btn-secondary{background:var(--surface2); color:var(--text); border:1px solid var(--edge);}
+  .btn-post{background:linear-gradient(135deg,#8FD3E2,#4FB0C6); color:#0C1E22;}
+  .btn:disabled{opacity:.45; cursor:default;}
+  .btn-small{width:auto; padding:9px 14px; font-size:13px;}
+
+  #statusLog{background:var(--bg2); border:1px solid var(--edge-soft); border-radius:12px;
+    padding:10px 12px; font-size:12.5px; color:var(--text-dim); font-family:'IBM Plex Mono',monospace;
+    max-height:170px; overflow-y:auto; margin-bottom:14px; line-height:1.6; display:none;}
+  #statusLog.visible{display:block;}
+  #statusLog .line{white-space:pre-wrap; word-break:break-word;}
+  #statusLog .err{color:var(--rose);}
+  #statusLog .ok{color:var(--green);}
+
+  .preview{display:none;}
+  .preview .thumb-wrap{position:relative; width:100%; aspect-ratio:16/9; background:#0C0A08;
+    border-radius:var(--radius); overflow:hidden; margin-bottom:14px;}
+  .preview .thumb-wrap img{width:100%; height:100%; object-fit:cover; display:block;}
+  .preview .meta{color:var(--text-dim); font-size:12.5px; margin-bottom:14px;}
+  .preview .meta .vtitle{color:var(--text); font-size:16px; font-weight:600; margin-bottom:4px; line-height:1.35;}
+  .already-posted-warn{background:#3A2E1A; border:1px solid #5A4A2A; color:var(--amber-soft);
+    border-radius:10px; padding:10px 12px; font-size:12.5px; margin-bottom:14px; display:none;}
+
+  .auto-status{font-size:12px; color:var(--text-faint); font-family:'IBM Plex Mono',monospace; min-height:16px; margin-top:6px; text-align:center;}
+  .manual-toggle{color:var(--teal-soft); font-size:12.5px; text-align:center; padding:10px 0 2px; cursor:pointer;}
+  .manual-section{display:none; flex-direction:column; gap:8px; padding-top:10px; border-top:1px dashed var(--edge); margin-top:8px;}
+  .manual-section a.open-link{display:flex; align-items:center; justify-content:center; gap:6px;
+    background:var(--surface2); border:1px solid var(--edge); color:var(--text); text-decoration:none;
+    border-radius:10px; padding:11px; font-size:13.5px; font-weight:600;}
+  .manual-section input[type=file]{width:100%; font-size:12.5px; color:var(--text-dim);
+    background:var(--bg2); border:1px dashed var(--edge); border-radius:10px; padding:9px;}
+  .file-picked{color:var(--green); font-size:12px; display:none;}
+  .post-result{font-size:12.5px; margin-top:8px; display:none; text-align:center;}
+  .post-result.ok{color:var(--green);}
+  .post-result.err{color:var(--rose);}
+  .posted-stamp{color:var(--green); font-size:14px; font-weight:600; display:none; align-items:center;
+    justify-content:center; gap:8px; padding:16px;}
+  .spinner{display:inline-block; width:15px; height:15px; border:2px solid #00000040; border-top-color:#1B1310;
+    border-radius:50%; animation:spin .7s linear infinite; vertical-align:-3px; margin-right:6px;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">YOUTUBE HAVOLA &rarr; TELEGRAM</div>
+  <h1>Bitta videoni qo'lda joylash</h1>
+  <p>YouTube'da yoqqan videoning havolasini joylashtiring — sarlavha va hashteglar
+     avtomatik tayyorlanadi (tahrirlash mumkin), video esa avtomatik yuklashga
+     urinib ko'riladi (ishlamasa, qo'lda yuklab biriktirasiz).</p>
+</header>
+
+<main>
+
+  <section class="card" id="settingsCard">
+    <h2>Sozlamalar</h2>
+    <div class="sub">Bir marta kiritsangiz, shu telefon/brauzerda saqlanib qoladi.</div>
+
+    <div class="field">
+      <label>Telegram bot tokeni</label>
+      <input type="password" id="botToken" placeholder="123456789:AA...">
+    </div>
+    <div class="field">
+      <label>Telegram kanal ID (yoki @username)</label>
+      <input type="text" id="channelId" placeholder="@mening_kanalim">
+    </div>
+    <button class="btn btn-secondary" id="saveSettingsBtn">Sozlamalarni saqlash</button>
+
+    <div class="field row" style="margin-top:12px;">
+      <div><button class="btn btn-secondary btn-small" id="exportSettingsBtn" style="width:100%;">&#8681; Faylga saqlash</button></div>
+      <div><button class="btn btn-secondary btn-small" id="importSettingsBtn" style="width:100%;">&#8679; Fayldan yuklash</button></div>
+    </div>
+    <input type="file" id="importSettingsFile" accept=".json,.txt" style="display:none;">
+  </section>
+
+  <section class="card">
+    <h2>Video havolasi</h2>
+    <div class="sub">youtube.com/watch?v=..., youtu.be/... yoki /shorts/... — har qanday format ishlaydi.</div>
+    <div class="field">
+      <textarea id="videoUrl" rows="2" placeholder="https://www.youtube.com/watch?v=..."></textarea>
+    </div>
+    <button class="btn btn-primary" id="fetchBtn">Video ma'lumotini olish</button>
+  </section>
+
+  <div id="statusLog"></div>
+
+  <section class="card preview" id="previewCard">
+    <div class="thumb-wrap"><img id="previewThumb" src="" alt=""></div>
+    <div class="meta">
+      <div class="vtitle" id="previewTitle"></div>
+      <div id="previewChannel"></div>
+    </div>
+    <div class="already-posted-warn" id="alreadyPostedWarn">
+      &#9888; Bu videoni avval ham joylagan ko'ringansiz (shu telefonda qayd etilgan). Baribir davom etishingiz mumkin.
+    </div>
+
+    <div class="field">
+      <label>Caption (sarlavha + hashteglar) — xohlasangiz tahrirlang</label>
+      <textarea id="captionBox" rows="6"></textarea>
+    </div>
+
+    <button class="btn btn-primary" id="autoBtn">&#9889; Avtomatik yuklash va joylash</button>
+    <div class="auto-status" id="autoStatus"></div>
+    <div class="manual-toggle" id="manualToggle">yoki qo'lda yuklang &#9662;</div>
+    <div class="manual-section" id="manualSection">
+      <a class="open-link" id="openLink" href="#" target="_blank" rel="noopener">&#9654; YouTube'da ochish (yuklab olish uchun)</a>
+      <input type="file" accept="video/*" id="fileInput">
+      <div class="file-picked" id="filePicked"></div>
+      <button class="btn btn-post" id="manualPostBtn" disabled>Kanalga joylash</button>
+    </div>
+    <div class="post-result" id="postResult"></div>
+    <div class="posted-stamp" id="postedStamp">&#10003; Kanalga joylandi</div>
+  </section>
+
+</main>
+
+<script>
+/* ============================================================
+   SOZLAMALAR / TAKRORLANMASLIK — localStorage
+   ============================================================ */
+const LS_SETTINGS = "yt_single_settings_v1";
+const LS_POSTED = "yt_single_posted_v1";
+const POSTED_KEEP_DAYS = 60;
+
+function loadJSON(key, fallback){
+  try{ const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }
+  catch(e){ return fallback; }
+}
+function saveJSON(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
+
+function getSettings(){ return loadJSON(LS_SETTINGS, {botToken:"", channelId:""}); }
+function getPosted(){ return loadJSON(LS_POSTED, {}); }
+function markPosted(videoId){
+  const posted = getPosted();
+  posted[videoId] = Date.now();
+  const cutoff = Date.now() - POSTED_KEEP_DAYS*24*3600*1000;
+  for(const id in posted){ if(posted[id] < cutoff) delete posted[id]; }
+  saveJSON(LS_POSTED, posted);
+}
+
+/* ============================================================
+   LOG
+   ============================================================ */
+const logEl = document.getElementById("statusLog");
+function log(msg, cls){
+  logEl.classList.add("visible");
+  const line = document.createElement("div");
+  line.className = "line" + (cls ? " "+cls : "");
+  line.textContent = msg;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+function logDivider(label){
+  logEl.classList.add("visible");
+  const div = document.createElement("div");
+  div.className = "line";
+  div.style.borderTop = "1px dashed #3A2E24";
+  div.style.margin = "8px 0";
+  div.style.paddingTop = "8px";
+  div.style.color = "#7C7062";
+  div.textContent = "-- " + label + " --";
+  logEl.appendChild(div);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+/* ============================================================
+   VIDEO ID / METADATA
+   ============================================================ */
+function extractVideoId(url){
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtube\.com\/shorts\/|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/live\/)([a-zA-Z0-9_-]{11})/,
+    /^([a-zA-Z0-9_-]{11})$/,  // faqat ID'ning o'zi kiritilgan bo'lsa
+  ];
+  for(const p of patterns){
+    const m = url.trim().match(p);
+    if(m) return m[1];
+  }
+  return null;
+}
+
+async function fetchOEmbed(watchUrl){
+  const resp = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(watchUrl)}&format=json`);
+  if(!resp.ok){
+    throw new Error("Video ma'lumotini olib bo'lmadi (video xususiy, o'chirilgan yoki mintaqaviy cheklangan bo'lishi mumkin).");
+  }
+  return await resp.json();
+}
+
+/* ============================================================
+   TIL ANIQLASH
+   ============================================================ */
+const UZBEK_CHARS_RE = /[\u040E\u045E\u049A\u049B\u0492\u0493\u04B2\u04B3]|[oOgG][\u02BB\u02BC''`]/;
+const UZBEK_WORDS = new Set(["qoshiq","qo'shiq","qo\u2018shiq","qoshig'i","ashula","kuy","tarona",
+  "uzbek","o'zbek","o\u2018zbek","ozbek","milliy","yangi","consert","konsert","xalq","qizlar","yigitlar","nomli","olam","yurt"]);
+const HINDI_SCRIPT_RE = /[\u0900-\u097F]/;
+const CYRILLIC_RE = /[\u0410-\u044F\u0401\u0451]/;
+
+function looksUzbek(title, channel){
+  const text = `${title} ${channel}`;
+  if(UZBEK_CHARS_RE.test(text)) return true;
+  const words = (text.toLowerCase().match(/[^\W\d_]+/gu) || []);
+  return words.some(w => UZBEK_WORDS.has(w));
+}
+function classifyLanguage(title, channel){
+  const text = `${title} ${channel}`;
+  if(HINDI_SCRIPT_RE.test(text)) return "hi";
+  if(looksUzbek(title, channel)) return "uz";
+  if(CYRILLIC_RE.test(text)) return "ru";
+  const letters = text.match(/[^\W\d_]/gu) || [];
+  if(letters.length){
+    const asciiCount = letters.filter(ch => /[\x00-\x7F]/.test(ch)).length;
+    if(asciiCount/letters.length > 0.8) return "en";
+  }
+  return "other";
+}
+
+/* ============================================================
+   HASHTEGLAR
+   ============================================================ */
+const STOPWORDS = new Set(["the","and","for","with","official","video","music","audio","lyric","lyrics",
+  "new","song","ft","feat","featuring","full","hd","4k","8k","mv","of","in","on","to","a","an","prod","by","vs","part"]);
+const LANGUAGE_HASHTAGS = {uz:["#Uzbek","#UzbekMusic"], ru:["#Russian"], en:["#English"], tr:["#Turkish"], hi:["#Hindi"]};
+const GENERIC_HASHTAGS = ["#Trending","#Viral","#YouTube","#MustWatch"];
+
+function cleanWord(w){ return w.replace(/[^0-9A-Za-z_\u00C0-\u024F\u0400-\u04FF]+/gu, "").replace(/^_+|_+$/g,""); }
+
+function titleHashtags(title, limit){
+  const tags = []; const seen = new Set();
+  const words = title.match(/[0-9A-Za-z_\u00C0-\u024F\u0400-\u04FF']+/gu) || [];
+  for(const raw of words){
+    const cleaned = cleanWord(raw);
+    if(cleaned.length < 3) continue;
+    const key = cleaned.toLowerCase();
+    if(STOPWORDS.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    tags.push("#"+cleaned[0].toUpperCase()+cleaned.slice(1));
+    if(tags.length >= limit) break;
+  }
+  return tags;
+}
+
+function buildHashtags(title, channel, lang, minCount=5, maxCount=8){
+  const tags = []; const seen = new Set();
+  function add(t){ if(!t) return; const k=t.toLowerCase(); if(!seen.has(k)){ seen.add(k); tags.push(t); } }
+  if(lang){ (LANGUAGE_HASHTAGS[lang.toLowerCase()] || []).forEach(add); }
+  if(channel){ const ct = "#"+cleanWord(channel); if(ct.length>1) add(ct); }
+  titleHashtags(title, 5).forEach(add);
+  for(const t of GENERIC_HASHTAGS){ if(tags.length >= minCount) break; add(t); }
+  return tags.slice(0, maxCount);
+}
+
+/* ============================================================
+   AVTOMATIK YUKLAB OLISHGA URINISH (Invidious ochiq serverlari orqali)
+   ============================================================
+   MUHIM: brauzer YouTube'dan video baytlarini to'g'ridan-to'g'ri OLOLMAYDI.
+   Invidious — ochiq-manbali, bepul, jamoat serverlari; ba'zan CORS orqali
+   video ochib beradi, LEKIN bu KAFOLATLANGAN EMAS. Bir nechta serverni
+   ketma-ket sinaymiz; birortasi ham ishlamasa, pastdagi QO'LDA yuklash
+   bo'limi avtomatik ochiladi.
+*/
+const INVIDIOUS_LIST_URL = "https://api.invidious.io/instances.json?sort_by=api,users";
+const TELEGRAM_MAX_UPLOAD_BYTES = 49 * 1024 * 1024;
+let _invidiousInstancesCache = null;
+
+async function getInvidiousInstances(){
+  if(_invidiousInstancesCache) return _invidiousInstancesCache;
+  try{
+    log("Ochiq server (Invidious) ro'yxati olinmoqda...");
+    const resp = await fetch(INVIDIOUS_LIST_URL);
+    if(!resp.ok){ log(`Server ro'yxati so'rovi rad etildi: HTTP ${resp.status}`, "err"); return []; }
+    const data = await resp.json();
+    log(`Xom javobda ${data.length} ta yozuv bor.`);
+    let list = data
+      .filter(([, info]) => info && info.type === "https" && info.uri)
+      .map(([, info]) => info.uri.replace(/\/+$/, ""));
+    log(`"https" turidagi filtrdan keyin: ${list.length} ta.`);
+    if(list.length === 0){
+      list = data
+        .filter(([, info]) => info && typeof info.uri === "string" && info.uri.startsWith("https://"))
+        .map(([, info]) => info.uri.replace(/\/+$/, ""));
+      log(`Zaxira (faqat https:// manzil) filtridan keyin: ${list.length} ta.`);
+    }
+    _invidiousInstancesCache = list;
+    return list;
+  }catch(e){
+    log(`Server ro'yxatini olishda xatolik: ${e.message} (odatda bu CORS cheklovi)`, "err");
+    return [];
+  }
+}
+
+async function tryAutoFetchVideoBlob(videoId, onAttempt, maxInstances=6){
+  const instances = await getInvidiousInstances();
+  if(instances.length === 0){
+    onAttempt && onAttempt("Server ro'yxati topilmadi.");
+    return null;
+  }
+  for(const base of instances.slice(0, maxInstances)){
+    let host = base;
+    try{ host = new URL(base).hostname; }catch(e){}
+    onAttempt && onAttempt(`${host} sinalmoqda...`);
+    log(`[${videoId}] ${host}: video ma'lumoti so'ralmoqda...`);
+    try{
+      const infoResp = await fetch(`${base}/api/v1/videos/${videoId}?fields=formatStreams`, {signal: AbortSignal.timeout(9000)});
+      if(!infoResp.ok){ log(`[${videoId}] ${host}: rad etildi (HTTP ${infoResp.status})`); continue; }
+      const info = await infoResp.json();
+      let streams = (info.formatStreams || []).filter(f => f.url && (f.container === "mp4" || /mp4/.test(f.type||"")));
+      if(streams.length === 0){ log(`[${videoId}] ${host}: mp4 format topilmadi.`); continue; }
+      log(`[${videoId}] ${host}: ${streams.length} ta format topildi, video yuklanmoqda...`);
+      streams.sort((a,b) => (a.bitrate||9e9) - (b.bitrate||9e9));
+      const preferred = streams.find(f => /480p?/.test(f.qualityLabel||"")) || streams[0];
+      const ordered = [preferred, ...streams.filter(f=>f!==preferred)];
+      for(const fmt of ordered){
+        try{
+          const videoResp = await fetch(fmt.url, {signal: AbortSignal.timeout(25000)});
+          if(!videoResp.ok){ log(`[${videoId}] ${host}: video so'rovi rad etildi (HTTP ${videoResp.status})`); continue; }
+          const blob = await videoResp.blob();
+          if(blob.size < 20*1024){ log(`[${videoId}] ${host}: fayl juda kichik.`); continue; }
+          if(blob.size > TELEGRAM_MAX_UPLOAD_BYTES){ log(`[${videoId}] ${host}: fayl juda katta (${(blob.size/1024/1024).toFixed(1)} MB).`); continue; }
+          log(`[${videoId}] ${host}: MUVAFFAQIYATLI (${(blob.size/1024/1024).toFixed(1)} MB, ${fmt.qualityLabel||"?"}).`, "ok");
+          return {blob, instance: host};
+        }catch(e){
+          log(`[${videoId}] ${host}: video baytlarini olishda xatolik - ${e.message} (odatda CORS cheklovi).`);
+          continue;
+        }
+      }
+    }catch(e){ log(`[${videoId}] ${host}: ma'lumot olishda xatolik - ${e.message}`); continue; }
+  }
+  return null;
+}
+
+/* ============================================================
+   TELEGRAM'GA JOYLASH
+   ============================================================ */
+async function postToTelegram(botToken, channelId, file, caption){
+  const form = new FormData();
+  form.append("chat_id", channelId);
+  form.append("caption", caption.slice(0, 1024));
+  form.append("parse_mode", "HTML");
+  form.append("video", file, file.name || "video.mp4");
+  const resp = await fetch(`https://api.telegram.org/bot${botToken}/sendVideo`, {method:"POST", body:form});
+  const data = await resp.json();
+  return {ok: !!data.ok, description: data.description || (data.ok ? "" : "Noma'lum xato")};
+}
+
+/* ============================================================
+   SOZLAMALAR: TO'LDIRISH / SAQLASH / IMPORT-EXPORT
+   ============================================================ */
+function fillSettingsForm(){
+  const s = getSettings();
+  document.getElementById("botToken").value = s.botToken || "";
+  document.getElementById("channelId").value = s.channelId || "";
+}
+document.getElementById("saveSettingsBtn").addEventListener("click", () => {
+  saveJSON(LS_SETTINGS, {
+    botToken: document.getElementById("botToken").value.trim(),
+    channelId: document.getElementById("channelId").value.trim(),
+  });
+  const btn = document.getElementById("saveSettingsBtn");
+  const orig = btn.textContent;
+  btn.textContent = "Saqlandi \u2713";
+  setTimeout(()=>btn.textContent=orig, 1400);
+});
+document.getElementById("exportSettingsBtn").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(getSettings(), null, 2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "yt_single_sozlamalar.json";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+document.getElementById("importSettingsBtn").addEventListener("click", () => {
+  document.getElementById("importSettingsFile").click();
+});
+document.getElementById("importSettingsFile").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if(!file) return;
+  try{
+    const data = JSON.parse(await file.text());
+    saveJSON(LS_SETTINGS, {
+      botToken: data.botToken || data.TELEGRAM_BOT_TOKEN || data.YOUTUBE_TELEGRAM_BOT_TOKEN || "",
+      channelId: data.channelId || data.TELEGRAM_CHANNEL_ID || data.YOUTUBE_TELEGRAM_CHANNEL_ID || "",
+    });
+    fillSettingsForm();
+    const btn = document.getElementById("importSettingsBtn");
+    const orig = btn.textContent;
+    btn.textContent = "Yuklandi \u2713";
+    setTimeout(()=>btn.textContent=orig, 1400);
+  }catch(err){
+    alert("Faylni o'qib bo'lmadi. JSON formatida bo'lishi kerak.");
+  }
+  e.target.value = "";
+});
+
+/* ============================================================
+   ASOSIY OQIM: MA'LUMOT OLISH
+   ============================================================ */
+let currentVideo = null; // {id, url, title, channel}
+
+document.getElementById("fetchBtn").addEventListener("click", async () => {
+  const fetchBtn = document.getElementById("fetchBtn");
+  const rawUrl = document.getElementById("videoUrl").value.trim();
+  const previewCard = document.getElementById("previewCard");
+
+  if(!rawUrl){ log("Avval video havolasini kiriting.", "err"); return; }
+  const videoId = extractVideoId(rawUrl);
+  if(!videoId){
+    log("Havoladan video ID topilmadi. To'g'ri YouTube havolasi ekanini tekshiring.", "err");
+    return;
+  }
+
+  fetchBtn.disabled = true;
+  fetchBtn.innerHTML = `<span class="spinner"></span>Olinmoqda...`;
+  logDivider("Video ma'lumoti");
+  previewCard.style.display = "none";
+
+  const watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
+  try{
+    log(`Video ID: ${videoId}`);
+    const info = await fetchOEmbed(watchUrl);
+    const title = info.title || watchUrl;
+    const channel = info.author_name || "";
+    const thumb = info.thumbnail_url || "";
+    log(`Topildi: "${title}" (${channel})`, "ok");
+
+    const lang = classifyLanguage(title, channel);
+    const hashtags = buildHashtags(title, channel, lang);
+    const caption = `${title}\n\n${hashtags.join(" ")}`;
+
+    currentVideo = {id: videoId, url: watchUrl, title, channel};
+
+    document.getElementById("previewThumb").src = thumb;
+    document.getElementById("previewTitle").textContent = title;
+    document.getElementById("previewChannel").textContent = channel;
+    document.getElementById("captionBox").value = caption;
+    document.getElementById("openLink").href = watchUrl;
+
+    const posted = getPosted();
+    document.getElementById("alreadyPostedWarn").style.display = posted[videoId] ? "block" : "none";
+
+    // Har bir yangi video uchun natija/holat ko'rsatkichlarini tozalaymiz
+    document.getElementById("autoStatus").textContent = "";
+    document.getElementById("postResult").style.display = "none";
+    document.getElementById("postedStamp").style.display = "none";
+    document.getElementById("manualSection").style.display = "none";
+    document.getElementById("manualToggle").style.display = "block";
+    document.getElementById("manualToggle").textContent = "yoki qo'lda yuklang \u25BE";
+    document.getElementById("autoBtn").style.display = "block";
+    document.getElementById("autoBtn").disabled = false;
+    document.getElementById("autoBtn").textContent = "\u26A1 Avtomatik yuklash va joylash";
+    document.getElementById("fileInput").value = "";
+    document.getElementById("filePicked").style.display = "none";
+    document.getElementById("manualPostBtn").disabled = true;
+
+    previewCard.style.display = "block";
+    previewCard.scrollIntoView({behavior:"smooth", block:"start"});
+  }catch(e){
+    log("Xatolik: " + e.message, "err");
+  }finally{
+    fetchBtn.disabled = false;
+    fetchBtn.textContent = "Video ma'lumotini olish";
+  }
+});
+
+/* ============================================================
+   AVTOMATIK / QO'LDA JOYLASH
+   ============================================================ */
+const manualToggle = document.getElementById("manualToggle");
+const manualSection = document.getElementById("manualSection");
+manualToggle.addEventListener("click", () => {
+  const showing = manualSection.style.display !== "none";
+  manualSection.style.display = showing ? "none" : "flex";
+  manualToggle.textContent = showing ? "yoki qo'lda yuklang \u25BE" : "qo'lda yuklashni yashirish \u25B4";
+});
+
+document.getElementById("fileInput").addEventListener("change", () => {
+  const fileInput = document.getElementById("fileInput");
+  const filePicked = document.getElementById("filePicked");
+  const manualPostBtn = document.getElementById("manualPostBtn");
+  if(fileInput.files && fileInput.files[0]){
+    const f = fileInput.files[0];
+    filePicked.style.display = "block";
+    filePicked.textContent = `Tanlandi: ${f.name} (${(f.size/1024/1024).toFixed(1)} MB)`;
+    manualPostBtn.disabled = false;
+  }
+});
+
+function afterSuccessfulPost(){
+  markPosted(currentVideo.id);
+  document.getElementById("postedStamp").style.display = "flex";
+  document.getElementById("autoBtn").style.display = "none";
+  document.getElementById("manualToggle").style.display = "none";
+  document.getElementById("manualSection").style.display = "none";
+}
+
+document.getElementById("manualPostBtn").addEventListener("click", async () => {
+  const settings = getSettings();
+  const postResult = document.getElementById("postResult");
+  const manualPostBtn = document.getElementById("manualPostBtn");
+  const fileInput = document.getElementById("fileInput");
+  const caption = document.getElementById("captionBox").value;
+
+  if(!settings.botToken || !settings.channelId){
+    postResult.style.display = "block"; postResult.className = "post-result err";
+    postResult.textContent = "Avval yuqorida Telegram bot tokeni va kanal ID'ni saqlang.";
+    return;
+  }
+  const file = fileInput.files[0];
+  if(!file) return;
+
+  manualPostBtn.disabled = true;
+  manualPostBtn.innerHTML = `<span class="spinner"></span>Joylanmoqda...`;
+  postResult.style.display = "none";
+
+  try{
+    const result = await postToTelegram(settings.botToken, settings.channelId, file, caption);
+    if(result.ok){
+      afterSuccessfulPost();
+    }else{
+      postResult.style.display = "block"; postResult.className = "post-result err";
+      postResult.textContent = "Xato: " + result.description;
+      manualPostBtn.disabled = false;
+      manualPostBtn.textContent = "Qayta urinish";
+    }
+  }catch(e){
+    postResult.style.display = "block"; postResult.className = "post-result err";
+    postResult.textContent = "Tarmoq xatoligi: " + e.message;
+    manualPostBtn.disabled = false;
+    manualPostBtn.textContent = "Qayta urinish";
+  }
+});
+
+document.getElementById("autoBtn").addEventListener("click", async () => {
+  const settings = getSettings();
+  const autoBtn = document.getElementById("autoBtn");
+  const autoStatus = document.getElementById("autoStatus");
+  const postResult = document.getElementById("postResult");
+  const caption = document.getElementById("captionBox").value;
+
+  if(!settings.botToken || !settings.channelId){
+    postResult.style.display = "block"; postResult.className = "post-result err";
+    postResult.textContent = "Avval yuqorida Telegram bot tokeni va kanal ID'ni saqlang.";
+    return;
+  }
+
+  autoBtn.disabled = true;
+  autoBtn.innerHTML = `<span class="spinner"></span>Urinilmoqda...`;
+  postResult.style.display = "none";
+  logDivider(`Avtomatik urinish: ${currentVideo.title.slice(0,40)}`);
+  logEl.scrollIntoView({behavior:"smooth", block:"center"});
+
+  const blobResult = await tryAutoFetchVideoBlob(currentVideo.id, (msg) => { autoStatus.textContent = msg; });
+
+  if(!blobResult){
+    autoStatus.textContent = "Avtomatik usul ishlamadi - sabab uchun yuqoridagi jurnalga qarang. Pastda qo'lda yuklang.";
+    autoBtn.style.display = "none";
+    manualSection.style.display = "flex";
+    manualToggle.style.display = "none";
+    return;
+  }
+
+  autoStatus.textContent = `${blobResult.instance} orqali topildi (${(blobResult.blob.size/1024/1024).toFixed(1)} MB), Telegram'ga yuborilmoqda...`;
+  try{
+    const file = new File([blobResult.blob], currentVideo.id+".mp4", {type:"video/mp4"});
+    const result = await postToTelegram(settings.botToken, settings.channelId, file, caption);
+    if(result.ok){
+      autoStatus.textContent = "";
+      afterSuccessfulPost();
+    }else{
+      autoStatus.textContent = "";
+      postResult.style.display = "block"; postResult.className = "post-result err";
+      postResult.textContent = "Telegram xatosi: " + result.description;
+      autoBtn.disabled = false;
+      autoBtn.textContent = "Qayta urinish";
+    }
+  }catch(e){
+    autoStatus.textContent = "";
+    postResult.style.display = "block"; postResult.className = "post-result err";
+    postResult.textContent = "Xatolik: " + e.message;
+    autoBtn.disabled = false;
+    autoBtn.textContent = "Qayta urinish";
+  }
+});
+
+/* ============================================================
+   ISHGA TUSHIRISH
+   ============================================================ */
+fillSettingsForm();
+</script>
+</body>
+</html>
