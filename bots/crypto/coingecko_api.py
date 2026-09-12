@@ -28,6 +28,15 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.coingecko.com/api/v3"
 
+# 401 (kalit limiti tugagan) birinchi marta uchraganda True bo'ladi — shundan keyin
+# navbatdagi har bir coin uchun behuda so'rov yubormasdan, darhol to'xtash mumkin
+# (limit qayta tiklanmaguncha keyingi so'rovlar ham baribir 401 qaytaradi).
+_quota_exhausted = False
+
+
+def is_quota_exhausted() -> bool:
+    return _quota_exhausted
+
 # So'rovlar orasidagi standart kutish — CoinGecko'ning rasmiy chegarasidan xavfsiz
 # pastroq turish uchun. API kalit bo'lsa (30/daqiqa chegara) tezroq, bo'lmasa
 # (5-15/daqiqa) ancha ehtiyotkorroq.
@@ -43,7 +52,15 @@ def _headers() -> dict:
 def _get(path: str, params: dict | None = None, max_retries: int = 3) -> dict | list | None:
     """Umumiy GET so'rovi — 429 (rate limit) javobini kutib qayta urinadi, boshqa
     xatolarda logga yozib None qaytaradi (chaqiruvchi shu holatda o'sha coin/bosqichni
-    o'tkazib yuborishi kerak, butun botni to'xtatmasdan)."""
+    o'tkazib yuborishi kerak, butun botni to'xtatmasdan).
+
+    MUHIM (haqiqiy voqeada aniqlangan muammo): avval 401 (kalit limiti tugagan/
+    noto'g'ri kalit) va boshqa HTTP xatolar bir xil, umumiy "CoinGecko xatoligi"
+    deb logga yozilardi — bu 429 (vaqtinchalik, soniyalar ichida o'tadigan) bilan
+    401 (KUNLIK/OYLIK LIMIT TUGAGAN — shu kun/oy davomida boshqa hech narsa
+    ishlamaydi) orasidagi farqni yashirib qo'yardi. Natijada foydalanuvchi nima
+    uchun ba'zi coinlarga sham chizilib, ba'zilariga chizilmasligini logdan bila
+    olmasdi. Endi 401 xatosi ALOHIDA, ANIQ xabar bilan ajratiladi."""
     url = f"{BASE_URL}{path}"
     for attempt in range(max_retries):
         try:
@@ -57,6 +74,18 @@ def _get(path: str, params: dict | None = None, max_retries: int = 3) -> dict | 
             logger.info("CoinGecko so'rov chastotasi chegarasiga yetdik, %.0fs kutilmoqda...", wait)
             time.sleep(wait)
             continue
+
+        if resp.status_code == 401:
+            global _quota_exhausted
+            _quota_exhausted = True
+            logger.error(
+                "OGOHLANTIRISH: CoinGecko API kalitingiz rad etildi (401) — bu odatda "
+                "KUNLIK YOKI OYLIK SO'ROV LIMITINGIZ TUGAGANI degani (vaqtinchalik "
+                "429 emas — bu limit qayta tiklanmaguncha DAVOM ETADI). Shu sababdan "
+                "ba'zi coinlarga ma'lumot (sham, RSI) chizilmay qolgan bo'lishi mumkin. "
+                "coingecko.com/en/api/pricing sahifasida limit holatingizni tekshiring."
+            )
+            return None
 
         try:
             resp.raise_for_status()
@@ -130,3 +159,29 @@ def get_market_chart(cg_id: str, days: int = 2) -> dict | None:
     if not closes:
         return None
     return {"closes": closes, "volumes": volumes}
+
+
+def get_ohlc_candles(cg_id: str, max_candles: int = 48) -> list[dict] | None:
+    """`cg_id` uchun yaponcha sham (candlestick) ma'lumotini qaytaradi —
+    [{"open":.., "high":.., "low":.., "close":.., "ts":..}, ...] shaklida,
+    eng eskisidan eng yangisiga qarab.
+
+    MUHIM (CoinGecko bepul tarifi cheklovi): "har soatda bitta sham"
+    (interval=hourly) parametri FAQAT CoinGecko'ning PULLIK tarifida ishlaydi.
+    Bepul ("Demo") tarifda granulярlik so'ralgan kun soniga qarab AVTOMATIK
+    belgilanadi va o'zgartirib bo'lmaydi:
+      - 1-2 kun: har 30 daqiqada bitta sham
+      - 3-30 kun: har 4 soatda bitta sham
+    Shuning uchun bu yerda `days=1` ishlatiladi (30 daqiqalik shamlar, taxminan
+    48 tasi — foydalanuvchi bilan kelishilgan variant). Agar kelajakda
+    CoinGecko'ning pullik tarifiga o'tsangiz, shu funksiyani `interval=hourly`
+    parametri bilan yangilab, haqiqiy soatlik (va uzunroq tarixli) shamlarga
+    o'tish mumkin bo'ladi."""
+    data = _get(f"/coins/{cg_id}/ohlc", {"vs_currency": "usd", "days": 1})
+    if not data:
+        return None
+    candles = [
+        {"ts": c[0], "open": c[1], "high": c[2], "low": c[3], "close": c[4]}
+        for c in data
+    ]
+    return candles[-max_candles:]

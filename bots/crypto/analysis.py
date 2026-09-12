@@ -1,5 +1,4 @@
-"""RSI hisoblash va narx o'zgarishlarini o'zbekcha izohli matnga aylantirish —
-kripto_bot_mobil.html'dagi analysis mantiqining porti.
+"""RSI hisoblash va narx o'zgarishlarini o'zbekcha izohli matnga aylantirish.
 
 Eslatma: funding rate / OI / long-short (fyuchers) funksiyalari bu yerdan olib
 tashlangan — CoinGecko'ga o'tilgach (Binance geografik cheklovi tufayli), bu
@@ -7,17 +6,27 @@ ma'lumotlar manbada umuman mavjud emas."""
 
 
 def calculate_rsi(closes: list[float], period: int = 14) -> float | None:
+    """Wilder'ning KLASSIK RSI(14) usuli — professional savdo platformalari
+    (TradingView, MetaTrader va h.k.) ishlatadigan aynan shu formula.
+
+    MUHIM (foydalanuvchi tahlili asosida tuzatilgan): avvalgi versiya har safar
+    FAQAT so'nggi 14 ta o'zgarishning oddiy o'rtachasini olardi — bu "silliqlash
+    xotirasi"ni yo'qotadi va TradingView/Binance kabi platformalar ko'rsatadigan
+    RSI qiymatidan sezilarli farq qilishi mumkin edi. Wilder usulida esa har bir
+    keyingi qiymat OLDINGI silliqlangan o'rtachaga asoslanib hisoblanadi
+    (eksponensial silliqlash) — bu klassik, hamma tan olgan RSI ta'rifi."""
     if not closes or len(closes) < period + 1:
         return None
-    gains, losses = [], []
-    for i in range(1, len(closes)):
-        delta = closes[i] - closes[i - 1]
-        gains.append(delta if delta > 0 else 0)
-        losses.append(-delta if delta < 0 else 0)
-    last_gains = gains[-period:]
-    last_losses = losses[-period:]
-    avg_gain = sum(last_gains) / period
-    avg_loss = sum(last_losses) / period
+    deltas = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
+    gains = [d if d > 0 else 0.0 for d in deltas]
+    losses = [-d if d < 0 else 0.0 for d in deltas]
+
+    avg_gain = sum(gains[:period]) / period
+    avg_loss = sum(losses[:period]) / period
+    for i in range(period, len(deltas)):
+        avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+        avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+
     if avg_loss == 0:
         return 50.0 if avg_gain == 0 else 100.0
     rs = avg_gain / avg_loss
@@ -33,6 +42,28 @@ def rsi_explanation(rsi: float | None) -> str:
     if rsi > 70:
         return f"RSI {rsi} — narx so'nggi kunlarga nisbatan tez ko'tarilgan"
     return f"RSI {rsi} — o'rtacha, keskin harakat kuzatilmagan"
+
+
+def rsi_status_short(rsi: float | None) -> str:
+    """Kartadagi kichik RSI belgisi uchun juda qisqa holat so'zi."""
+    if rsi is None:
+        return "Ma'lumot yo'q"
+    if rsi < 30:
+        return "Sotib olingan"
+    if rsi > 70:
+        return "Qizib ketgan"
+    return "O'rtacha"
+
+
+def format_volume(volume: float) -> str:
+    """Katta hajm raqamini o'qish oson formatga o'tkazadi: 48_600_000_000 -> "$48.6B"."""
+    if volume >= 1_000_000_000:
+        return f"${volume/1_000_000_000:.1f}B"
+    if volume >= 1_000_000:
+        return f"${volume/1_000_000:.1f}M"
+    if volume >= 1_000:
+        return f"${volume/1_000:.1f}K"
+    return f"${volume:.0f}"
 
 
 def get_top_movers(pairs: list[dict], top_n: int) -> tuple[list[dict], list[dict]]:

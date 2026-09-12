@@ -4,7 +4,3 @@ schedule>=1.2.0
 deep-translator>=1.11.4
 feedparser>=6.0.10
 Pillow>=10.0.0
-# YouTube-repost boti uchun. YouTube tez-tez o'zgaradi va eski versiyalar ko'pincha
-# "HTTP Error 403: Forbidden" xatosiga olib keladi — muntazam yangilab turish tavsiya
-# etiladi: pip install -U yt-dlp (bots/youtube/README.md'ga qarang).
-yt-dlp>=2026.8.19

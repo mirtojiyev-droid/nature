@@ -76,6 +76,19 @@ def draw_soft_glow_circle(base: Image.Image, cx: int, cy: int, radius: int, colo
     base.alpha_composite(glow)
 
 
+def draw_soft_glow_rect(base: Image.Image, xy: list[int], color: str,
+                         opacity: int = 110, blur: int = 36) -> None:
+    """To'rtburchak (masalan katta "hero" raqam yoki status belgisi) atrofida
+    yumshoq porlash — "neon" uslubidagi kartalarga xos, e'tiborni birinchi
+    navbatda eng muhim raqamga (masalan foiz o'zgarishi) tortish uchun."""
+    x0, y0, x1, y1 = xy
+    glow = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    gdraw = ImageDraw.Draw(glow)
+    gdraw.rounded_rectangle([x0, y0, x1, y1], radius=(y1 - y0) / 3, fill=(*hex_to_rgb(color), opacity))
+    glow = glow.filter(ImageFilter.GaussianBlur(blur))
+    base.alpha_composite(glow)
+
+
 def draw_triangle(draw: ImageDraw.ImageDraw, cx: int, cy: int, size: int, color: str, pointing: str = "up") -> None:
     """Oddiy uchburchak (yuqoriga/pastga qaragan o'q) — DejaVu Sans shriftida emoji
     (▲/▼/⚽ va h.k.) yo'qligi sababli, bunday belgilarni HAR DOIM shrift bilan emas,
@@ -89,9 +102,96 @@ def draw_triangle(draw: ImageDraw.ImageDraw, cx: int, cy: int, size: int, color:
     draw.polygon(points, fill=color)
 
 
+def draw_candlestick_chart(draw: ImageDraw.ImageDraw, xy: list[int], candles: list[dict],
+                            up_color: str = "#22E37E", down_color: str = "#FF4D6D",
+                            wick_width: int = 2) -> None:
+    """Yaponcha shamlar (candlestick) grafikasi — berilgan to'rtburchak ichiga,
+    `candles` ro'yxatidagi (eng eskisidan eng yangisiga) har bir {"open","high",
+    "low","close"} nuqtasi uchun bitta sham chizadi. Narx o'sgan bo'lsa (close >=
+    open) yashil, tushgan bo'lsa qizil — klassik konventsiya."""
+    if not candles:
+        return
+    x0, y0, x1, y1 = xy
+    width, height = x1 - x0, y1 - y0
+    n = len(candles)
+
+    all_highs = [c["high"] for c in candles]
+    all_lows = [c["low"] for c in candles]
+    price_max, price_min = max(all_highs), min(all_lows)
+    price_range = price_max - price_min or 1.0
+
+    def y_for(price: float) -> float:
+        return y1 - (price - price_min) / price_range * height
+
+    slot_w = width / n
+    body_w = max(slot_w * 0.55, 1.5)
+
+    for i, c in enumerate(candles):
+        cx = x0 + slot_w * (i + 0.5)
+        is_up = c["close"] >= c["open"]
+        color = up_color if is_up else down_color
+
+        wick_top, wick_bottom = y_for(c["high"]), y_for(c["low"])
+        draw.line([cx, wick_top, cx, wick_bottom], fill=color, width=wick_width)
+
+        body_top = y_for(max(c["open"], c["close"]))
+        body_bottom = y_for(min(c["open"], c["close"]))
+        if body_bottom - body_top < 2:  # deyarli o'zgarishsiz sham - ozgina qalinlik beramiz, ko'rinmas bo'lib qolmasin
+            body_bottom = body_top + 2
+        draw.rectangle([cx - body_w / 2, body_top, cx + body_w / 2, body_bottom], fill=color)
+
+
 def draw_pill(draw: ImageDraw.ImageDraw, xy: list[int], fill: str, outline: str | None = None, width: int = 0) -> None:
     """To'liq dumaloq uchli ("pill" shaklidagi) to'rtburchak — statuslar, belgilar
     (badge) uchun zamonaviy ko'rinish."""
     x0, y0, x1, y1 = xy
     radius = (y1 - y0) / 2
     draw.rounded_rectangle(xy, radius=radius, fill=fill, outline=outline, width=width)
+
+
+# RSI gauge (speedometer) uchun rang shkalasi: past (0) - qizil, o'rta (50) - sariq,
+# yuqori (100) - yashil. Bu klassik "bozor holati" gauge'iga o'xshash, tushunarli.
+_GAUGE_STOPS = [(0.0, "#FF4D6D"), (0.5, "#FFC94D"), (1.0, "#22E37E")]
+
+
+def _gauge_color_at(t: float) -> tuple[int, int, int]:
+    t = max(0.0, min(1.0, t))
+    for i in range(len(_GAUGE_STOPS) - 1):
+        t0, c0 = _GAUGE_STOPS[i]
+        t1, c1 = _GAUGE_STOPS[i + 1]
+        if t0 <= t <= t1:
+            local_t = (t - t0) / (t1 - t0) if t1 > t0 else 0
+            rgb0, rgb1 = hex_to_rgb(c0), hex_to_rgb(c1)
+            return tuple(round(rgb0[i] + (rgb1[i] - rgb0[i]) * local_t) for i in range(3))
+    return hex_to_rgb(_GAUGE_STOPS[-1][1])
+
+
+def draw_gauge(draw: ImageDraw.ImageDraw, cx: int, cy: int, radius: int, value: float,
+               thickness: int = 20, label: str | None = None, value_font=None, label_font=None) -> None:
+    """0-100 oralig'idagi qiymatni (masalan RSI) yarim-doira "spidometr" shaklida,
+    qizil-sariq-yashil rang shkalasi va ko'rsatkich (strelka/igna) bilan chizadi.
+    PIL'ning `arc()` funksiyasida 180->360 gradus TEPA yarim doirani beradi (chapda
+    180=0-qiymat, o'ngda 360/0=100-qiymat) — aynan spidometrga kerakli shakl."""
+    segments = 60
+    for i in range(segments):
+        t0, t1 = i / segments, (i + 1) / segments
+        angle0 = 180 + t0 * 180
+        angle1 = 180 + t1 * 180
+        color = _gauge_color_at((t0 + t1) / 2)
+        draw.arc([cx - radius, cy - radius, cx + radius, cy + radius], angle0, angle1, fill=color, width=thickness)
+
+    # Ko'rsatkich (strelka) — qiymatga mos burchakda, markazdan tashqariga qarab
+    import math
+    value_t = max(0.0, min(100.0, value)) / 100.0
+    needle_angle = math.radians(180 + value_t * 180)
+    needle_len = radius - thickness / 2 - 4
+    nx = cx + needle_len * math.cos(needle_angle)
+    ny = cy + needle_len * math.sin(needle_angle)
+    draw.line([cx, cy, nx, ny], fill="#FFFFFF", width=7)
+    pivot_r = 11
+    draw.ellipse([cx - pivot_r, cy - pivot_r, cx + pivot_r, cy + pivot_r], fill="#FFFFFF")
+
+    if label and value_font:
+        draw.text((cx, cy + radius * 0.32), f"{value:.0f}", font=value_font, fill="#FFFFFF", anchor="mm")
+    if label and label_font:
+        draw.text((cx, cy + radius * 0.32 + 40), label, font=label_font, fill="#C7CDDB", anchor="mm")

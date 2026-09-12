@@ -1,48 +1,62 @@
-"""Coin/breakout kartalarini PNG rasm sifatida, zamonaviy "fintech ilova" uslubida
-chizadi (gradient fon, yumshoq soyalar, pill-shaklidagi belgilar) — shared/canvas.py
-umumiy chizish vositalaridan foydalanadi.
+"""Coin/breakout kartalarini PNG rasm sifatida chizadi — 3-versiya, ChatGPT/Gemini
+tahlillari asosida qayta ishlangan.
+
+MUHIM QAROR (nima o'zgardi, va nima ATAYLAB o'zgartirilMAdi):
+1. FORMAT 16:9'dan 4:5'ga (1080x1350) o'tkazildi — Telegram mobil-feedida ancha
+   ko'proq joy egallaydi, e'tiborni ko'proq tortadi.
+2. FOIZ O'ZGARISHI endi "hero" (eng katta, markaziy) element — chunki odam
+   birinchi navbatda "qancha o'sdi/tushdi"ni bilishni xohlaydi, RSI emas.
+3. HAJM (VOLUME) bloki qo'shildi — bu odamni haqiqatan qiziqtiradigan, avval
+   butunlay ko'rsatilmagan kuchli ko'rsatkich edi.
+4. RSI endi KICHIK, ikkinchi darajali belgi (gauge emas, kompakt pill) —
+   asosiy "qahramon" coin va foiz bo'lsin, RSI yordamchi ma'lumot.
+5. Fon to'liq qora ("#05070B") o'rniga chuqur ko'k-yashil gradient — Telegram
+   feedida ko'proq "premium" va yorqinroq ko'rinadi.
+6. ATAYLAB QO'SHILMAGAN: "Entry", "Target", "Stop Loss" narxlari va
+   "MASSIVE MOVE INCOMING" kabi shoshiltiruvchi sarlavhalar. Bizning ma'lumot
+   manbamiz (narx, RSI, hajm) bunday aniq narx maqsadlarini hisoblashga
+   yetarli emas — buni ko'rsatish o'ylab topilgan raqamlarni haqiqiy tahlil
+   qilib ko'rsatish bo'lardi, bu odamlarni chalg'itishi mumkin. Status matni
+   FAQAT haqiqatan hisoblangan ma'lumotlarga (RSI, hajm nisbati) asoslanadi.
 """
 from io import BytesIO
 
 from PIL import Image, ImageDraw
 
-from shared.canvas import diagonal_gradient, draw_pill, draw_triangle, paste_soft_shadow
+from shared.canvas import diagonal_gradient, draw_candlestick_chart, draw_pill, draw_soft_glow_rect, draw_triangle, paste_soft_shadow
 from shared.fonts import get_font
-from .analysis import signed_num
+from .analysis import format_volume, rsi_status_short, signed_num
 
 IMG_WIDTH = 1080
-OUTER_PAD = 32          # rasm chekkasi va karta orasidagi bo'shliq (soya uchun joy qoldiradi)
-CARD_RADIUS = 30
-ACCENT_BAR_W = 10        # kartaning chap chetidagi rangli chiziq kengligi
-CONTENT_X = 74           # accent chiziqdan keyingi matn boshlanish nuqtasi
-CARD_RIGHT_PAD = 40
+IMG_HEIGHT = 1620
+OUTER_PAD = 40
+CARD_RADIUS = 36
+ACCENT_BAR_H = 10   # endi TEPADA gorizontal chiziq (portret formatga mosroq)
 
-HEADER_Y = 44            # karta ichidagi yuqori qatorning (badge/symbol/pct) markazi
-CHIP_ROW_Y = 108         # narx/RSI chip'lari qatori
-NOTES_START_Y = 156
-NOTE_LINE_HEIGHT = 34
-BOTTOM_PAD = 30
+BRAND_LABEL = "Crypto bozor"
 
-# --- Rang palitrasi: chuqurroq, boyroq va "jonli" (avvalgi tekis ranglardan farqli) ---
 PAGE_BG = "#05070B"
 
-GRAD_UP = ("#0E3B28", "#081F16")
-ACCENT_UP = "#22E37E"
-TEXT_UP = "#3DFFA0"
-
-GRAD_DOWN = ("#3D1220", "#210911")
-ACCENT_DOWN = "#FF4D6D"
-TEXT_DOWN = "#FF6B84"
-
-GRAD_BREAKOUT = ("#3D2E0A", "#231A04")
-ACCENT_BREAKOUT = "#FFC94D"
-TEXT_BREAKOUT = "#FFD97A"
+# Har bir turkum uchun: fon gradienti, urg'u rangi, matn rangi, status pill matni
+PALETTES = {
+    "up": {
+        "grad": ("#0A2F22", "#071A14"), "accent": "#22E37E", "text": "#3DFFA0",
+        "status_label": "TOP GAINER", "status_icon": "\U0001F680",
+    },
+    "down": {
+        "grad": ("#33101C", "#1C0910"), "accent": "#FF4D6D", "text": "#FF6B84",
+        "status_label": "TOP LOSER", "status_icon": "\u26A0\uFE0F",
+    },
+    "breakout": {
+        "grad": ("#332708", "#1E1704"), "accent": "#FFC94D", "text": "#FFD97A",
+        "status_label": "BREAKOUT RADAR", "status_icon": "\u26A1",
+    },
+}
 
 CARD_TEXT = "#F3F5FA"
+SUB_TEXT = "#B7C0D6"
 CHIP_BG = "#00000055"
-CHIP_TEXT = "#C7CDDB"
-NOTE_TEXT = "#D8DCEA"
-NOTE_BULLET_ALPHA = 255
+BRAND_TEXT = "#8993AC"
 
 
 def format_price(price: float) -> str:
@@ -55,137 +69,178 @@ def format_price(price: float) -> str:
     return f"{price:,.1f}"
 
 
-def _card_height(n_notes: int) -> int:
-    notes_block = n_notes * NOTE_LINE_HEIGHT if n_notes else -14
-    return NOTES_START_Y + notes_block + BOTTOM_PAD
+def _momentum_status(rsi: float | None, pct: float) -> str:
+    """Katta, jonli, LEKIN faqat haqiqatan hisoblangan ma'lumotga (RSI+foiz)
+    asoslangan xulosa — o'ylab topilgan narx maqsadlari EMAS."""
+    if rsi is not None and rsi > 70 and pct > 0:
+        return "Kuchli xarid bosimi"
+    if rsi is not None and rsi < 30 and pct < 0:
+        return "Kuchli sotuv bosimi"
+    if abs(pct) >= 8:
+        return "Yuqori volatillik"
+    return "Barqaror harakat"
 
 
-def _draw_chip(draw: ImageDraw.ImageDraw, x: int, y_center: int, text: str, font) -> int:
-    """Kichik "chip" (pastki-qavariq to'rtburchak) ichida matn chizadi, chipning
-    KENGLIGINI (keyingi chip qayerdan boshlanishi kerakligini) qaytaradi."""
+def _draw_status_pill(base: Image.Image, draw, cx_left: int, y: int, palette: dict) -> int:
+    text = f"{palette['status_icon']} {palette['status_label']}"
+    font = get_font(30, "bold")
     text_w = draw.textlength(text, font=font)
-    pad_x = 20
-    chip_w = text_w + pad_x * 2
-    chip_h = 44
-    draw.rounded_rectangle(
-        [x, y_center - chip_h / 2, x + chip_w, y_center + chip_h / 2],
-        radius=chip_h / 2, fill=CHIP_BG,
-    )
-    draw.text((x + chip_w / 2, y_center), text, font=font, fill=CHIP_TEXT, anchor="mm")
-    return chip_w
-
-
-def _draw_card_core(base: Image.Image, y_top: int, rank: int, symbol: str,
-                     pct_value: float, price_line_parts: list[str], notes: list[str],
-                     grad_colors: tuple[str, str], accent_color: str, text_color: str) -> int:
-    h = _card_height(len(notes))
-    x0, x1 = OUTER_PAD, IMG_WIDTH - OUTER_PAD
-    y1 = y_top + h
-
-    # 1) Yumshoq soya (kartaning o'zidan OLDIN chizilishi kerak — pastda qolishi uchun)
-    paste_soft_shadow(base, [x0, y_top, x1, y1], CARD_RADIUS, opacity=130, offset=(0, 12), blur=26)
-
-    # 2) Kartaning gradient foni (chap-yuqoridan o'ng-pastga, kartaning o'z hajmida)
-    card_w, card_h = x1 - x0, y1 - y_top
-    grad = diagonal_gradient((card_w, card_h), grad_colors[0], grad_colors[1])
-    mask = Image.new("L", (card_w, card_h), 0)
-    ImageDraw.Draw(mask).rounded_rectangle([0, 0, card_w, card_h], radius=CARD_RADIUS, fill=255)
-    base.paste(grad, (x0, y_top), mask)
-
-    draw = ImageDraw.Draw(base)
-
-    # 3) Chap chetdagi rangli urg'u chizig'i (faqat kartaning chap burchaklariga mos
-    # yumaloqlangan holda — kichik alohida forma sifatida, kartaning ustiga qo'yiladi)
-    accent_mask = Image.new("L", (card_w, card_h), 0)
-    ImageDraw.Draw(accent_mask).rounded_rectangle([0, 0, ACCENT_BAR_W * 2, card_h], radius=CARD_RADIUS, fill=255)
-    accent_layer = Image.new("RGBA", (card_w, card_h), (0, 0, 0, 0))
-    ImageDraw.Draw(accent_layer).rectangle([0, 0, ACCENT_BAR_W, card_h], fill=accent_color)
-    base.paste(accent_layer, (x0, y_top), Image.composite(accent_layer.split()[3], Image.new("L", (card_w, card_h), 0), accent_mask))
-
-    # 4) Reyting (rank) belgisi — gradient-ga o'xshash effekt uchun to'q rang halqa + ichida raqam
-    badge_cx, badge_cy = x0 + ACCENT_BAR_W + 54, y_top + HEADER_Y + 8
-    badge_r = 34
-    draw.ellipse([badge_cx - badge_r, badge_cy - badge_r, badge_cx + badge_r, badge_cy + badge_r], fill=accent_color)
-    draw.ellipse([badge_cx - badge_r + 4, badge_cy - badge_r + 4, badge_cx + badge_r - 4, badge_cy + badge_r - 4],
-                 outline="#00000030", width=2)
-    draw.text((badge_cx, badge_cy), str(rank), font=get_font(34, "bold"), fill="#08110C" if accent_color != ACCENT_BREAKOUT else "#241A04", anchor="mm")
-
-    # 5) Symbol nomi (katta, qalin)
-    name_x = badge_cx + badge_r + 26
-    draw.text((name_x, badge_cy), symbol, font=get_font(58, "bold"), fill=CARD_TEXT, anchor="lm")
-
-    # 6) Foiz o'zgarishi — pill badge + uchburchak ikonka (emoji EMAS, chizilgan shakl)
-    pct_text = f"{signed_num(pct_value, 1)}%"
-    pct_font = get_font(40, "bold")
-    pct_text_w = draw.textlength(pct_text, font=pct_font)
-    tri_size = 26
-    pill_pad_x = 24
-    pill_gap = 10
-    pill_h = 64
-    pill_w = tri_size + pill_gap + pct_text_w + pill_pad_x * 2
-    pill_x1 = x1 - CARD_RIGHT_PAD
-    pill_x0 = pill_x1 - pill_w
-    pill_y0 = badge_cy - pill_h / 2
-    pill_y1 = badge_cy + pill_h / 2
-    draw_pill(draw, [pill_x0, pill_y0, pill_x1, pill_y1], fill="#00000040")
-    tri_cx = pill_x0 + pill_pad_x + tri_size / 2
-    draw_triangle(draw, tri_cx, badge_cy, tri_size, text_color, pointing="up" if pct_value >= 0 else "down")
-    draw.text((tri_cx + tri_size / 2 + pill_gap, badge_cy), pct_text, font=pct_font, fill=text_color, anchor="lm")
-
-    # 7) Narx/RSI — chip'lar qatorida
-    chip_x = name_x
-    chip_font = get_font(26, "bold")
-    for part in price_line_parts:
-        chip_w = _draw_chip(draw, chip_x, y_top + CHIP_ROW_Y, part, chip_font)
-        chip_x += chip_w + 14
-
-    # 8) Izohlar — rangli nuqta + matn
-    note_font = get_font(27)
-    for i, note in enumerate(notes):
-        ny = y_top + NOTES_START_Y + i * NOTE_LINE_HEIGHT
-        draw.ellipse([name_x - 2, ny - 5, name_x + 8, ny + 5], fill=accent_color)
-        draw.text((name_x + 22, ny), note, font=note_font, fill=NOTE_TEXT, anchor="lm")
-
+    pad_x, h = 26, 56
+    w = text_w + pad_x * 2
+    # Yumshoq porlash (glow) — statusni "chaqiruvchi belgi"dek his qildiradi,
+    # neon-uslubidagi zamonaviy trading-ilova dizaynlariga xos urg'u.
+    draw_soft_glow_rect(base, [cx_left, y, cx_left + w, y + h], palette["accent"], opacity=130, blur=30)
+    draw_pill(draw, [cx_left, y, cx_left + w, y + h], fill=palette["accent"])
+    draw.text((cx_left + w / 2, y + h / 2), text, font=font,
+              fill="#08110C" if palette is not PALETTES["breakout"] else "#241A04", anchor="mm")
     return h
 
 
-def _render(notes: list[str], draw_fn) -> bytes:
-    h = _card_height(len(notes))
-    total_h = h + 2 * OUTER_PAD
-    img = Image.new("RGBA", (IMG_WIDTH, total_h), PAGE_BG)
+def _draw_stat_block(draw, x: int, y: int, w: int, label: str, value: str, accent: str, value_font_size=44) -> int:
+    """Ikki qatorli statistik blok (masalan "24H VOLUME" / "$48.6B") — chap
+    tekislangan, kichik katta-harfli yorliq + katta qiymat."""
+    draw.text((x, y), label, font=get_font(20, "bold"), fill=accent, anchor="lm")
+    draw.text((x, y + 40), value, font=get_font(value_font_size, "bold"), fill=CARD_TEXT, anchor="lm")
+    return 40 + value_font_size
+
+
+def _draw_card(base: Image.Image, rank: int, symbol: str, pct_value: float,
+               price: float, volume: float | None, volume_ratio: float | None,
+               rsi: float | None, candles: list[dict] | None, palette: dict) -> None:
+    x0, y0, x1, y1 = OUTER_PAD, OUTER_PAD, IMG_WIDTH - OUTER_PAD, IMG_HEIGHT - OUTER_PAD
+    card_w, card_h = x1 - x0, y1 - y0
+
+    paste_soft_shadow(base, [x0, y0, x1, y1], CARD_RADIUS, opacity=140, offset=(0, 16), blur=32)
+
+    grad = diagonal_gradient((card_w, card_h), palette["grad"][0], palette["grad"][1])
+    mask = Image.new("L", (card_w, card_h), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, card_w, card_h], radius=CARD_RADIUS, fill=255)
+    base.paste(grad, (x0, y0), mask)
+
+    draw = ImageDraw.Draw(base)
+
+    # Tepadagi rangli chiziq (portret formatda "chap chiziq" o'rniga)
+    top_accent_mask = Image.new("L", (card_w, card_h), 0)
+    ImageDraw.Draw(top_accent_mask).rounded_rectangle([0, 0, card_w, ACCENT_BAR_H * 3], radius=CARD_RADIUS, fill=255)
+    top_layer = Image.new("RGBA", (card_w, card_h), (0, 0, 0, 0))
+    ImageDraw.Draw(top_layer).rectangle([0, 0, card_w, ACCENT_BAR_H], fill=palette["accent"])
+    base.paste(top_layer, (x0, y0), Image.composite(top_layer.split()[3], Image.new("L", (card_w, card_h), 0), top_accent_mask))
+
+    pad = 56
+    cursor_y = y0 + 56
+
+    # 1) Brendlash (kichik, yuqorida)
+    brand_r = 12
+    draw.ellipse([x0 + pad - brand_r, cursor_y - brand_r, x0 + pad + brand_r, cursor_y + brand_r], fill=palette["accent"])
+    draw.text((x0 + pad + brand_r + 10, cursor_y), BRAND_LABEL, font=get_font(22, "bold"), fill=BRAND_TEXT, anchor="lm")
+    if rank:
+        rank_text = f"#{rank}"
+        draw.text((x1 - pad, cursor_y), rank_text, font=get_font(24, "bold"), fill=SUB_TEXT, anchor="rm")
+    cursor_y += 90
+
+    # 2) Status pill (TOP GAINER / TOP LOSER / BREAKOUT RADAR)
+    pill_h = _draw_status_pill(base, draw, x0 + pad, cursor_y, palette)
+    cursor_y += pill_h + 70
+
+    # 3) Symbol nomi (katta)
+    draw.text((x0 + pad, cursor_y), symbol, font=get_font(84, "bold"), fill=CARD_TEXT, anchor="lm")
+    cursor_y += 150
+
+    # 4) HERO: foiz o'zgarishi — ENG KATTA, markaziy element, orqasida yumshoq
+    # porlash (glow) bilan — e'tiborni birinchi navbatda shu raqamga tortadi.
+    pct_text = f"{signed_num(pct_value, 2)}%"
+    hero_font = get_font(172, "bold")
+    tri_size = 68
+    tri_cx = x0 + pad + tri_size / 2
+    hero_text_x = x0 + pad + tri_size + 24
+    hero_text_w = draw.textlength(pct_text, font=hero_font)
+    draw_soft_glow_rect(
+        base, [hero_text_x - 20, cursor_y - 20, hero_text_x + hero_text_w + 20, cursor_y + 160],
+        palette["accent"], opacity=90, blur=50,
+    )
+    draw_triangle(draw, tri_cx, cursor_y + 90, tri_size, palette["text"], pointing="up" if pct_value >= 0 else "down")
+    draw.text((hero_text_x, cursor_y), pct_text, font=hero_font, fill=palette["text"], anchor="lm")
+    cursor_y += 230
+
+    # 5) Narx (hero'dan kichikroq, lekin aniq)
+    draw.text((x0 + pad, cursor_y), f"${format_price(price)}", font=get_font(54, "bold"), fill=CARD_TEXT, anchor="lm")
+    cursor_y += 130
+
+    # 6) Ajratuvchi chiziq
+    draw.line([x0 + pad, cursor_y, x1 - pad, cursor_y], fill="#FFFFFF22", width=2)
+    cursor_y += 56
+
+    # 6.5) Yaponcha shamlar (candlestick) grafigi — narxning so'nggi harakati.
+    # MUHIM: CoinGecko bepul tarifida "haqiqiy soatlik" granulярlik yo'q (bu faqat
+    # pullik tarifda ishlaydi) — shuning uchun bu yerda 30 daqiqalik shamlar
+    # ko'rsatiladi (odatda ~48 tasi), va sarlavhada aniq shunday deb yozilgan —
+    # "soatlik" deb noto'g'ri da'vo qilinmaydi.
+    if candles:
+        chart_h = 260
+        chart_label = f"NARX HARAKATI \u2014 {len(candles)} x 30 DAQIQALIK SHAM"
+        draw.text((x0 + pad, cursor_y), chart_label, font=get_font(20, "bold"), fill=palette["accent"], anchor="lm")
+        cursor_y += 36
+        draw_candlestick_chart(
+            draw, [x0 + pad, cursor_y, x1 - pad, cursor_y + chart_h],
+            candles, up_color=PALETTES["up"]["accent"], down_color=PALETTES["down"]["accent"],
+        )
+        cursor_y += chart_h + 50
+    else:
+        cursor_y += 20
+
+    # 7) Statistik bloklar: HAJM (chap) + RSI (o'ng, kichikroq)
+    col_w = (card_w - 2 * pad) / 2
+    if volume is not None:
+        vol_label = "24H VOLUME"
+        vol_value = format_volume(volume)
+        if volume_ratio:
+            vol_value += f"  \u26A1{volume_ratio:.1f}x"
+        _draw_stat_block(draw, x0 + pad, cursor_y, col_w, vol_label, vol_value, palette["accent"], value_font_size=52)
+
+    rsi_label = "RSI (14)"
+    rsi_value = f"{rsi:.0f}" if rsi is not None else "\u2014"
+    rsi_status = rsi_status_short(rsi)
+    rsi_x = x0 + pad + col_w + 20
+    draw.text((rsi_x, cursor_y), rsi_label, font=get_font(20, "bold"), fill=palette["accent"], anchor="lm")
+    draw.text((rsi_x, cursor_y + 48), rsi_value, font=get_font(52, "bold"), fill=CARD_TEXT, anchor="lm")
+    rsi_val_w = draw.textlength(rsi_value, font=get_font(52, "bold"))
+    draw.text((rsi_x + rsi_val_w + 18, cursor_y + 62), rsi_status, font=get_font(24), fill=SUB_TEXT, anchor="lm")
+    cursor_y += 140
+
+    # 8) Status xulosasi (faqat haqiqiy ma'lumotga asoslangan, raqamsiz)
+    cursor_y += 40
+    status_text = _momentum_status(rsi, pct_value)
+    box_h = 96
+    draw.rounded_rectangle([x0 + pad, cursor_y, x1 - pad, cursor_y + box_h], radius=18, fill=CHIP_BG)
+    draw.text((x0 + pad * 1.5, cursor_y + box_h / 2), f"\U0001F4CA {status_text}", font=get_font(34, "bold"), fill=palette["text"], anchor="lm")
+
+    # 9) Pastki qism: brend + disclaimer
+    footer_y = y1 - 54
+    draw.text((x0 + pad, footer_y), BRAND_LABEL, font=get_font(20, "bold"), fill=BRAND_TEXT, anchor="lm")
+    draw.text((x1 - pad, footer_y), "Tahliliy ma'lumot, moliyaviy maslahat emas",
+              font=get_font(17), fill=SUB_TEXT, anchor="rm")
+
+
+def _render(draw_fn) -> bytes:
+    img = Image.new("RGBA", (IMG_WIDTH, IMG_HEIGHT), PAGE_BG)
     draw_fn(img)
     buf = BytesIO()
     img.convert("RGB").save(buf, format="PNG")
     return buf.getvalue()
 
 
-def _get_note_lines(coin: dict) -> list[str]:
-    # Eslatma: avvalgi (Binance) versiyada bu yerda funding/OI/long-short qatorlari
-    # ham bo'lardi. CoinGecko'da bunday fyuchers ma'lumoti mavjud emas, shuning uchun
-    # endi faqat RSI izohi ko'rsatiladi.
-    return [coin["rsi_note"]]
-
-
 def build_coin_card_image(coin: dict, is_up: bool, rank: int) -> bytes:
-    notes = _get_note_lines(coin)
-    symbol = coin["symbol"].replace("USDT", "")
-    rsi = coin.get("rsi")
-    price_parts = [f"Narx: {format_price(coin['last_price'])}", f"RSI {rsi:.1f}" if rsi is not None else "RSI —"]
-    grad = GRAD_UP if is_up else GRAD_DOWN
-    accent = ACCENT_UP if is_up else ACCENT_DOWN
-    text_color = TEXT_UP if is_up else TEXT_DOWN
-
-    return _render(notes, lambda base: _draw_card_core(
-        base, OUTER_PAD, rank, symbol, coin["price_change_pct"], price_parts, notes, grad, accent, text_color,
+    palette = PALETTES["up"] if is_up else PALETTES["down"]
+    return _render(lambda base: _draw_card(
+        base, rank, coin["symbol"].replace("USDT", ""), coin["price_change_pct"],
+        coin["last_price"], coin.get("quote_volume"), None, coin.get("rsi"),
+        coin.get("candles"), palette,
     ))
 
 
 def build_breakout_card_image(candidate: dict, rank: int, notes: list[str]) -> bytes:
-    symbol = candidate["symbol"].replace("USDT", "")
-    rsi = candidate.get("rsi")
-    price_parts = [f"Narx: {format_price(candidate['last_price'])}", f"RSI {rsi:.1f}" if rsi is not None else "RSI —"]
-
-    return _render(notes, lambda base: _draw_card_core(
-        base, OUTER_PAD, rank, symbol, candidate["price_change_pct"], price_parts, notes,
-        GRAD_BREAKOUT, ACCENT_BREAKOUT, TEXT_BREAKOUT,
+    return _render(lambda base: _draw_card(
+        base, rank, candidate["symbol"].replace("USDT", ""), candidate["price_change_pct"],
+        candidate["last_price"], candidate.get("quote_volume"), candidate.get("volume_ratio"),
+        candidate.get("rsi"), candidate.get("candles"), PALETTES["breakout"],
     ))

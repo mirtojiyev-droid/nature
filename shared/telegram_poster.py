@@ -233,3 +233,24 @@ class TelegramPoster:
             },
             max_retries=2,
         )
+
+    def post_poll(self, question: str, options: list[str], is_anonymous: bool = True) -> bool:
+        """Haqiqiy Telegram so'rovnomasi (poll) — oddiy matn emas, foydalanuvchilar
+        to'g'ridan-to'g'ri ovoz bera oladigan interaktiv element. Telegram
+        talablari: savol 1-300 belgi, kamida 2 ta variant, har biri 1-100 belgi."""
+        import json
+        question = self._trim(question, 300)
+        options = [self._trim(opt, 100) for opt in options][:10]
+        if len(options) < 2:
+            logger.error("Poll uchun kamida 2 ta variant kerak (berildi: %d).", len(options))
+            return False
+        return self._send(
+            "sendPoll",
+            {
+                "chat_id": self.channel_id,
+                "question": question,
+                "options": json.dumps(options, ensure_ascii=False),
+                "is_anonymous": "true" if is_anonymous else "false",
+            },
+            max_retries=2,
+        )
