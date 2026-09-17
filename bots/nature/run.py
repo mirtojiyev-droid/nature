@@ -202,10 +202,19 @@ def run_once(forced_facet_key: str | None = None) -> int:
             final_path = tmp_path / "final_video.mp4"
             if prepare_video_for_posting(local_video, final_path, location_text=theme):
                 video_posted = poster.post_video_file(final_path, caption)
+                if not video_posted:
+                    logger.error("Lokal video (%s) joylashda xatolik.", local_video.name)
             else:
-                video_posted = poster.post_video_file(local_video, caption)
-            if not video_posted:
-                logger.error("Lokal video (%s) joylashda xatolik.", local_video.name)
+                # MUHIM (foydalanuvchi tomonidan aniqlangan muammo — haqiqiy misolda
+                # ko'rilgan): avval qayta ishlash (ffmpeg) muvaffaqiyatsiz bo'lsa, XOM
+                # (original) fayl to'g'ridan-to'g'ri joylanardi. Bu — sifat nazoratini
+                # butunlay chetlab o'tish degani: xom fayl noma'lum formatda (masalan
+                # .webm) bo'lishi mumkin, Telegram mobil ilovasi buni o'ynatib
+                # bo'lmaydigan oddiy FAYL (hujjat) sifatida ko'rsatib qo'yadi — bu esa
+                # "pro" kanalning ko'rinishini butunlay buzadi. Endi bunday holatda
+                # video UMUMAN JOYLANMAYDI (postsiz qolish, o'ynatib bo'lmaydigan xom
+                # fayl joylashdan ancha yaxshi).
+                logger.warning("Lokal video (%s) ffmpeg orqali qayta ishlanmadi - sifat nazoratidan o'tmagani uchun JOYLANMAYDI.", local_video.name)
 
     if not video_posted:
         video_result = _fetch_with_fallback(_video_sources(True), variants, "Video (vertikal/telefon uchun)")
@@ -216,8 +225,9 @@ def run_once(forced_facet_key: str | None = None) -> int:
             with tempfile.TemporaryDirectory() as tmp_dir:
                 tmp_path = Path(tmp_dir)
                 # Manba URL'idagi kengaytmani saqlab qolamiz (masalan Wikimedia Commons'dan
-                # .webm/.ogv kelishi mumkin) — shunda ffmpeg mavjud bo'lmagan taqdirda ham,
-                # asl fayl to'g'ri kengaytma bilan joylanadi.
+                # .webm/.ogv kelishi mumkin) — ffprobe/ffmpeg fayl formatini to'g'ri
+                # aniqlashi uchun (kengaytma noto'g'ri bo'lsa, ba'zi vaziyatlarda ffmpeg
+                # faylni ochib bo'lmasligi mumkin).
                 url_suffix = Path(urlparse(video_url).path).suffix
                 raw_path = tmp_path / f"raw_video{url_suffix or '.mp4'}"
                 if download_file(video_url, raw_path):
@@ -234,10 +244,31 @@ def run_once(forced_facet_key: str | None = None) -> int:
                         if prepare_video_for_posting(raw_path, final_path, location_text=theme):
                             video_posted = poster.post_video_file(final_path, caption)
                         else:
-                            video_posted = poster.post_video_file(raw_path, caption)
+                            # MUHIM (foydalanuvchi tomonidan haqiqiy misolda aniqlangan
+                            # muammo — screenshot bilan ko'rsatilgan): avval bu yerda
+                            # XOM faylning o'zi (masalan .webm) to'g'ridan-to'g'ri
+                            # joylanardi. Telegram mobil ilovasi ko'plab .webm
+                            # variantlarini o'ynatib bo'lmaydigan holda, oddiy YUKLAB
+                            # OLINADIGAN FAYL sifatida ko'rsatadi — bu kanalning "pro"
+                            # ko'rinishini buzadi va foydalanuvchi tajribasini
+                            # yomonlashtiradi. Endi: qayta ishlash (H.264 mp4'ga
+                            # o'tkazish) muvaffaqiyatsiz bo'lsa, bu manba SIFAT
+                            # NAZORATIDAN O'TMAGAN deb hisoblanadi va UMUMAN
+                            # JOYLANMAYDI — postsiz qolish, o'ynatib bo'lmaydigan xom
+                            # fayl yuborishdan ancha yaxshi.
+                            logger.warning(
+                                "'%s' manbasidan kelgan video (%s) ffmpeg orqali qayta ishlanmadi - "
+                                "sifat nazoratidan o'tmagani uchun JOYLANMAYDI.",
+                                source_name, raw_path.suffix,
+                            )
                 else:
-                    # Diskka yuklab bo'lmasa, to'g'ridan-to'g'ri URL orqali joylashga
-                    # urinamiz (musiqasiz, lekin postsiz qolgandan yaxshi).
+                    # Diskka yuklab bo'lmasa (masalan tarmoq xatoligi) — bu qayta
+                    # ishlash MUVAFFAQIYATSIZLIGIDAN farqli holat (fayl sifati bilan
+                    # bog'liq emas) — shuning uchun bu yerda hali ham to'g'ridan-to'g'ri
+                    # URL orqali joylashga urinish MANTIQAN TO'G'RI: Telegram'ning o'zi
+                    # videoni URL'dan olib, o'z tomonida qayta ishlaydi (bizning
+                    # ffmpeg'imizga umuman bog'liq emas), demak "xom, ochilmaydigan
+                    # fayl" muammosi bu yerda kelib chiqmaydi.
                     video_posted = poster.post_video(video_url, caption)
                 if not video_posted:
                     logger.error("'%s' (%s) uchun videoni joylashda xatolik.", theme, facet["label"])
