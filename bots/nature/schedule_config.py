@@ -21,6 +21,7 @@ NATURE_DAILY_SCHEDULE = [
     ("06:00", "sunrise"),
     ("08:00", "wildlife"),
     ("10:00", "beach"),
+     ("10:30", "beach"),
     ("12:00", "forest"),
     ("14:00", "mountain"),
     ("16:00", "birds"),
