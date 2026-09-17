@@ -27,4 +27,6 @@ NATURE_DAILY_SCHEDULE = [
     ("18:00", "sunset"),
     ("20:00", "rain"),
     ("22:00", "aerial"),
+    ("22:35", "rain"),
+    ("22:40", "rain"),
 ]
