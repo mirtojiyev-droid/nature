@@ -115,7 +115,9 @@ class WikimediaFetcher:
             return None
         return chosen["url"]
 
-    def fetch_video(self, query: str, prefer_vertical: bool = True) -> str | None:
+    def _find_matching_video_candidates(self, query: str, prefer_vertical: bool) -> list[dict]:
+        """Ichki yordamchi — `fetch_video` va `fetch_video_candidates` uchun umumiy
+        (pixabay_fetcher.py'dagi bir xil naqshga qarang)."""
         pages = _search_commons(query, "video")
         candidates = []
         for page in pages:
@@ -141,7 +143,10 @@ class WikimediaFetcher:
             if is_vertical != prefer_vertical:
                 continue
             candidates.append({"url": url, "score": width * height})
+        return sorted(candidates, key=lambda c: c["score"], reverse=True)
 
+    def fetch_video(self, query: str, prefer_vertical: bool = True) -> str | None:
+        candidates = self._find_matching_video_candidates(query, prefer_vertical)
         chosen = _rank_and_pick(candidates, lambda c: c["score"])
         if not chosen:
             logger.info(
@@ -151,3 +156,10 @@ class WikimediaFetcher:
             )
             return None
         return chosen["url"]
+
+    def fetch_video_candidates(self, query: str, prefer_vertical: bool = True, max_results: int = 4) -> list[str]:
+        """Bir nechta nomzod havolasini (eng yaxshisidan boshlab) qaytaradi —
+        pixabay_fetcher.py'dagi bir xil nomdagi metodga qarang (foydalanish sababi)."""
+        candidates = self._find_matching_video_candidates(query, prefer_vertical)
+        return [c["url"] for c in candidates[:max_results]]
+

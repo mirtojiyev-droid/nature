@@ -4,14 +4,16 @@ kelishilgan o'sish rejasi asosida ("har soatda 24 ta emas, kuniga 10-12 ta, har 
 aniq vaqtda va aniq kategoriyada"). Har bir yozuv: (soat:daqiqa, facet.py'dagi FACETS
 ro'yxatining "key" maydoni).
 
+MUHIM: bu yerdagi vaqtlar — MAHALLIY (O'zbekiston) vaqtda yozilgan (shuning uchun
+18:00 = kechqurun, dengiz/yomg'ir kabi tinchlantiruvchi kontent uchun to'g'ri vaqt).
+Serverning o'zi odatda UTC soatida ishlaydi — bu farqni `main.py` avtomatik
+(`NATURE_TZ_OFFSET_HOURS`, standart 5 — O'zbekiston UTC+5) hisobga oladi, shuning
+uchun bu yerda hech narsani UTC'ga o'zingiz o'girishingiz shart emas — shunchaki
+xohlagan MAHALLIY vaqtingizni yozing.
+
 Bu jadval FAQAT `NATURE_USE_DAILY_SCHEDULE=true` bo'lganda ishlatiladi (standart —
 main.py'ga qarang). `false` qilib qo'ysangiz, bot eski usulda — `NATURE_INTERVAL_MINUTES`
 oralig'ida, tasodifiy navbat bilan qirra tanlab — ishlashda davom etadi.
-
-Vaqtni yoki kategoriyani o'zgartirish uchun shu ro'yxatni to'g'ridan-to'g'ri tahrirlang
-— vaqtlar SERVERNING soat mintaqasiga (odatda UTC) nisbatan, mahalliy vaqt EMAS
-ekanini unutmang (agar mahalliy vaqtga moslashtirmoqchi bo'lsangiz, har bir vaqtga
-farqni qo'lda qo'shib/ayirib chiqing).
 """
 
 NATURE_DAILY_SCHEDULE = [

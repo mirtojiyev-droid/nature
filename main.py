@@ -75,6 +75,28 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+# MUHIM (foydalanuvchi bilan aniqlangan muammo): Render (va aksariyat bulut
+# serverlari) soat mintaqasi sifatida UTC'ni ishlatadi — `schedule` kutubxonasi ham,
+# `datetime.now()` ham serverning O'ZI ko'radigan (ya'ni UTC) vaqtni ishlatadi.
+# `bots/nature/schedule_config.py`dagi vaqtlar esa ATAYLAB O'ZBEKISTON MAHALLIY
+# VAQTIDA yozilgan (masalan "18:00" — mahalliy kechqurun, dengiz/yomg'ir kabi
+# tinchlantiruvchi kontent uchun mo'ljallangan) — bu ikkisi orasidagi farq
+# NATURE_TZ_OFFSET_HOURS orqali tuzatiladi (standart: 5 — O'zbekiston UTC+5).
+# Agar serveringiz boshqa mintaqada joylashgan bo'lsa yoki hisob-kitobda xato
+# bo'lsa, shu qiymatni .env'da osongina o'zgartirishingiz mumkin.
+NATURE_TZ_OFFSET_HOURS = _env_int("NATURE_TZ_OFFSET_HOURS", 5)
+
+
+def _shift_time_str(time_str: str, offset_hours: int) -> str:
+    """"HH:MM" formatidagi MAHALLIY vaqtni serverning (UTC) soat ko'rsatkichiga
+    o'tkazadi — masalan mahalliy "18:00" (UTC+5 bilan) serverda "13:00" bo'lib
+    ro'yxatdan o'tkaziladi. Kun chegarasidan oshib/kamayib ketishi (masalan mahalliy
+    "02:00" UTC+5'da avvalgi kunning "21:00"si bo'ladi) avtomatik hisobga olinadi."""
+    h, m = map(int, time_str.split(":"))
+    total_minutes = (h * 60 + m - offset_hours * 60) % (24 * 60)
+    return f"{total_minutes // 60:02d}:{total_minutes % 60:02d}"
+
+
 # Har bir bot uchun qulf fayli shu papkaga yoziladi (fcntl.flock — jarayonlar
 # ORASIDA ham ishlaydi, oddiy threading.Lock'dan farqli — pastdagi job() funksiyasidagi
 # izohga qarang).
@@ -226,14 +248,21 @@ def setup_schedule() -> bool:
         # o'chirib, eski (interval-based) rejimga qaytish uchun .env'da
         # NATURE_USE_DAILY_SCHEDULE=false qiling.
         if name == "tabiat" and os.getenv("NATURE_USE_DAILY_SCHEDULE", "true").lower() == "true":
-            for time_str, facet_key in NATURE_DAILY_SCHEDULE:
-                schedule.every().day.at(time_str).do(
+            # MUHIM: schedule_config.py'dagi vaqtlar MAHALLIY vaqtda yozilgan, lekin
+            # `schedule` kutubxonasi serverning (UTC) soatini ishlatadi — shuning uchun
+            # ro'yxatdan o'tkazishdan oldin har birini _shift_time_str() bilan UTC'ga
+            # aylantiramiz (NATURE_TZ_OFFSET_HOURS orqali).
+            server_schedule = [
+                (_shift_time_str(t, NATURE_TZ_OFFSET_HOURS), fk) for t, fk in NATURE_DAILY_SCHEDULE
+            ]
+            for server_time_str, facet_key in server_schedule:
+                schedule.every().day.at(server_time_str).do(
                     threaded_job, name, lambda fk=facet_key: run_nature(forced_facet_key=fk)
                 )
             scheduled_count += 1
             logger.info(
-                "%s boti KUNLIK jadval bo'yicha ishlaydi (kuniga %d marta: %s).",
-                label, len(NATURE_DAILY_SCHEDULE),
+                "%s boti KUNLIK jadval bo'yicha ishlaydi (kuniga %d marta, mahalliy vaqt (UTC+%d): %s).",
+                label, len(NATURE_DAILY_SCHEDULE), NATURE_TZ_OFFSET_HOURS,
                 ", ".join(f"{t} {k}" for t, k in NATURE_DAILY_SCHEDULE),
             )
 
@@ -247,14 +276,15 @@ def setup_schedule() -> bool:
             # — bu ertaga). Kripto/futbolda bu muammo yo'q edi, chunki ular pastdagi
             # "yaqinda ishlaganmi" tekshiruvidan o'tadi — lekin tabiat undan oldin
             # `continue` bilan chiqib ketardi. Endi: bugungi eng so'nggi "o'tib ketgan"
-            # jadval vaqtini topamiz, va agar tabiat o'sha vaqtdan beri ISHLAMAGAN
-            # bo'lsa (last_run_times orqali — bu ham diskka yozilgani uchun qayta
-            # ishga tushishlar orasida saqlanadi), DARHOL o'sha vaqtning qirrasi bilan
-            # bir marta (o'tkazib yubormaslik uchun) ishga tushiramiz.
+            # jadval vaqtini topamiz (SERVER/UTC vaqtida, `now_dt` ham server vaqti
+            # bo'lgani uchun), va agar tabiat o'sha vaqtdan beri ISHLAMAGAN bo'lsa
+            # (last_run_times orqali — bu ham diskka yozilgani uchun qayta ishga
+            # tushishlar orasida saqlanadi), DARHOL o'sha vaqtning qirrasi bilan bir
+            # marta (o'tkazib yubormaslik uchun) ishga tushiramiz.
             now_dt = datetime.now()
             passed_today = [
                 (datetime.combine(now_dt.date(), datetime.strptime(t, "%H:%M").time()), fk)
-                for t, fk in NATURE_DAILY_SCHEDULE
+                for t, fk in server_schedule
                 if datetime.combine(now_dt.date(), datetime.strptime(t, "%H:%M").time()) <= now_dt
             ]
             if passed_today:
@@ -262,8 +292,9 @@ def setup_schedule() -> bool:
                 last = last_run_times.get(name)
                 if last is None or datetime.fromtimestamp(last) < latest_slot_dt:
                     logger.info(
-                        "  -> %s eng so'nggi jadval vaqti (%s, qirra: %s) o'tkazib yuborilgan bo'lishi mumkin "
-                        "(jarayon qayta ishga tushgan) — darhol shu qirra bilan bir marta ishga tushiriladi.",
+                        "  -> %s eng so'nggi jadval vaqti (server/UTC %s, qirra: %s) o'tkazib yuborilgan "
+                        "bo'lishi mumkin (jarayon qayta ishga tushgan) — darhol shu qirra bilan bir marta "
+                        "ishga tushiriladi.",
                         label, latest_slot_dt.strftime("%H:%M"), latest_facet_key,
                     )
                     threaded_job(name, lambda fk=latest_facet_key: run_nature(forced_facet_key=fk))

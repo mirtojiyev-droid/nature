@@ -91,6 +91,50 @@ def _fetch_with_fallback(sources: list[tuple[str, callable]], variants: list[str
     return None
 
 
+def _find_and_prepare_video(sources: list[tuple[str, callable]], variants: list[str],
+                             tmp_path: Path, theme: str) -> Path | None:
+    """`_fetch_with_fallback`dan farqli — BITTA URL bilan to'xtamaydi. Har bir manba/
+    so'rov birikmasi uchun BIR NECHTA nomzod (fetch_video_candidates) oladi, va
+    har birini KETMA-KET: yuklab olish -> bo'sh/qora kadr tekshiruvi -> ffmpeg orqali
+    Telegram uchun mos formatga o'tkazish (+ topilsa musiqa, + brendlash) bosqichlaridan
+    o'tkazadi. Birinchi nomzod istalgan bosqichda muvaffaqiyatsiz bo'lsa (yuklanmadi,
+    bo'sh ekan, yoki ffmpeg qayta ishlay olmadi), RO'YXATDAGI KEYINGI nomzodga o'tadi —
+    faqat BITTA muammoli fayl tufayli butun post video'siz (faqat rasm bilan)
+    qolib ketmasligi uchun (foydalanuvchi so'rovi).
+
+    Muvaffaqiyatli bo'lsa, Telegram'ga joylashga tayyor YAKUNIY (qayta ishlangan)
+    fayl yo'lini qaytaradi. Hech qanday nomzod (barcha manba/so'rov/nomzod
+    birikmalari orasidan) sifat nazoratidan o'ta olmasa, None qaytaradi — bu holatda
+    run_once() video'siz, faqat rasm bilan davom etadi (postsiz qolishdan yaxshi)."""
+    attempt = 0
+    for query in variants:
+        for source_name, fetch_candidates_fn in sources:
+            candidate_urls = fetch_candidates_fn(query)
+            for video_url in candidate_urls:
+                attempt += 1
+                url_suffix = Path(urlparse(video_url).path).suffix
+                raw_path = tmp_path / f"raw_{attempt}{url_suffix or '.mp4'}"
+                if not download_file(video_url, raw_path):
+                    logger.warning("'%s' manbasidan video (so'rov: '%s') yuklab olinmadi - keyingi nomzod sinaladi.", source_name, query)
+                    continue
+                if is_blank_video_file(raw_path):
+                    logger.warning("'%s' manbasidan video (so'rov: '%s') bo'sh/qora ekan - keyingi nomzod sinaladi.", source_name, query)
+                    continue
+                final_path = tmp_path / f"final_{attempt}.mp4"
+                if prepare_video_for_posting(raw_path, final_path, location_text=theme):
+                    logger.info(
+                        "Video topildi, sifat nazoratidan o'tdi va tayyorlandi — manba: %s, so'rov: '%s' (%d-nomzod).",
+                        source_name, query, attempt,
+                    )
+                    return final_path
+                logger.warning(
+                    "'%s' manbasidan video (so'rov: '%s') ffmpeg orqali qayta ishlanmadi - keyingi nomzod sinaladi.",
+                    source_name, query,
+                )
+    logger.info("Hech qanday video nomzodi sifat nazoratidan o'ta olmadi (%d ta nomzod sinaldi).", attempt)
+    return None
+
+
 def run_once(forced_facet_key: str | None = None) -> int:
     """Bitta postni tanlaydi va joylaydi. scheduler.py ichidan chaqiriladi (standart:
     kunlik kategoriya-vaqt jadvali bo'yicha — bots/nature/schedule.py'ga qarang), yoki
@@ -147,9 +191,14 @@ def run_once(forced_facet_key: str | None = None) -> int:
     wikimedia = WikimediaFetcher()  # API kalit shart emas, doim faol qo'shimcha manba
 
     def _video_sources(prefer_vertical: bool):
+        # MUHIM: endi `fetch_video` (bitta URL) o'rniga `fetch_video_candidates`
+        # (bir nechta URL ro'yxati) ishlatiladi — pastdagi `_find_and_prepare_video()`
+        # birinchi nomzod yuklab bo'lmasa yoki sifat nazoratidan o'tmasa, RO'YXATDAGI
+        # KEYINGI nomzodni avtomatik sinab ko'radi (foydalanuvchi so'rovi: "topgan va
+        # tekshiruvdan o'tgan videoni yuklay olmasa, boshqasini qidirsin").
         return [
-            ("Pixabay", lambda q, pv=prefer_vertical: pixabay.fetch_video(q, prefer_vertical=pv)),
-            ("Wikimedia Commons", lambda q, pv=prefer_vertical: wikimedia.fetch_video(q, prefer_vertical=pv)),
+            ("Pixabay", lambda q, pv=prefer_vertical: pixabay.fetch_video_candidates(q, prefer_vertical=pv)),
+            ("Wikimedia Commons", lambda q, pv=prefer_vertical: wikimedia.fetch_video_candidates(q, prefer_vertical=pv)),
         ]
 
     def _photo_sources(prefer_vertical: bool):
@@ -217,61 +266,15 @@ def run_once(forced_facet_key: str | None = None) -> int:
                 logger.warning("Lokal video (%s) ffmpeg orqali qayta ishlanmadi - sifat nazoratidan o'tmagani uchun JOYLANMAYDI.", local_video.name)
 
     if not video_posted:
-        video_result = _fetch_with_fallback(_video_sources(True), variants, "Video (vertikal/telefon uchun)")
-        if not video_result:
-            video_result = _fetch_with_fallback(_video_sources(False), variants, "Video (gorizontal)")
-        if video_result:
-            source_name, video_url = video_result
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                tmp_path = Path(tmp_dir)
-                # Manba URL'idagi kengaytmani saqlab qolamiz (masalan Wikimedia Commons'dan
-                # .webm/.ogv kelishi mumkin) — ffprobe/ffmpeg fayl formatini to'g'ri
-                # aniqlashi uchun (kengaytma noto'g'ri bo'lsa, ba'zi vaziyatlarda ffmpeg
-                # faylni ochib bo'lmasligi mumkin).
-                url_suffix = Path(urlparse(video_url).path).suffix
-                raw_path = tmp_path / f"raw_video{url_suffix or '.mp4'}"
-                if download_file(video_url, raw_path):
-                    if is_blank_video_file(raw_path):
-                        # MUHIM (foydalanuvchi tomonidan aniqlangan muammo): ba'zan
-                        # stock-kutubxonadan texnik jihatdan "buzuq" (qora ekran yoki
-                        # bir xil rangli) fayl kelishi mumkin edi — bunday holda avval
-                        # baribir joylanardi. Endi bunday fayl ANIQLANADI va JOYLANMAYDI
-                        # (bo'sh post qoldirish, noto'g'ri/mazmunsiz post joylashdan
-                        # ancha yaxshi).
-                        logger.warning("'%s' manbasidan kelgan video bo'sh/qora ekan deb aniqlandi - joylanmaydi.", source_name)
-                    else:
-                        final_path = tmp_path / "final_video.mp4"
-                        if prepare_video_for_posting(raw_path, final_path, location_text=theme):
-                            video_posted = poster.post_video_file(final_path, caption)
-                        else:
-                            # MUHIM (foydalanuvchi tomonidan haqiqiy misolda aniqlangan
-                            # muammo — screenshot bilan ko'rsatilgan): avval bu yerda
-                            # XOM faylning o'zi (masalan .webm) to'g'ridan-to'g'ri
-                            # joylanardi. Telegram mobil ilovasi ko'plab .webm
-                            # variantlarini o'ynatib bo'lmaydigan holda, oddiy YUKLAB
-                            # OLINADIGAN FAYL sifatida ko'rsatadi — bu kanalning "pro"
-                            # ko'rinishini buzadi va foydalanuvchi tajribasini
-                            # yomonlashtiradi. Endi: qayta ishlash (H.264 mp4'ga
-                            # o'tkazish) muvaffaqiyatsiz bo'lsa, bu manba SIFAT
-                            # NAZORATIDAN O'TMAGAN deb hisoblanadi va UMUMAN
-                            # JOYLANMAYDI — postsiz qolish, o'ynatib bo'lmaydigan xom
-                            # fayl yuborishdan ancha yaxshi.
-                            logger.warning(
-                                "'%s' manbasidan kelgan video (%s) ffmpeg orqali qayta ishlanmadi - "
-                                "sifat nazoratidan o'tmagani uchun JOYLANMAYDI.",
-                                source_name, raw_path.suffix,
-                            )
-                else:
-                    # Diskka yuklab bo'lmasa (masalan tarmoq xatoligi) — bu qayta
-                    # ishlash MUVAFFAQIYATSIZLIGIDAN farqli holat (fayl sifati bilan
-                    # bog'liq emas) — shuning uchun bu yerda hali ham to'g'ridan-to'g'ri
-                    # URL orqali joylashga urinish MANTIQAN TO'G'RI: Telegram'ning o'zi
-                    # videoni URL'dan olib, o'z tomonida qayta ishlaydi (bizning
-                    # ffmpeg'imizga umuman bog'liq emas), demak "xom, ochilmaydigan
-                    # fayl" muammosi bu yerda kelib chiqmaydi.
-                    video_posted = poster.post_video(video_url, caption)
-                if not video_posted:
-                    logger.error("'%s' (%s) uchun videoni joylashda xatolik.", theme, facet["label"])
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            final_path = _find_and_prepare_video(_video_sources(True), variants, tmp_path, theme)
+            if not final_path:
+                final_path = _find_and_prepare_video(_video_sources(False), variants, tmp_path, theme)
+            if final_path:
+                video_posted = poster.post_video_file(final_path, caption)
+            if not video_posted:
+                logger.error("'%s' (%s) uchun videoni joylashda xatolik.", theme, facet["label"])
 
     photo_posted = False
     if post_photo_too:

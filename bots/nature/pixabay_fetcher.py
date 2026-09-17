@@ -139,51 +139,60 @@ class PixabayFetcher:
             logger.warning("Pixabay rasm so'rovida xatolik (%s): %s", query, exc)
             return None
 
-    def fetch_video(self, query: str, prefer_vertical: bool = True) -> str | None:
-        """Pixabay video API'sida `orientation` parametri yo'q, shuning uchun har bir
-        natijaning o'zi (video fayl width/height'i) tekshirilib, vertikal yoki gorizontal
-        ekanligi aniqlanadi va faqat so'ralgan formatga mos kelganlar orasidan eng yuqori
-        sifatlisi tanlanadi. Mos keladigan hech narsa topilmasa None qaytadi — chaqiruvchi
-        (main.py) shu holatda boshqa orientatsiya bilan qayta urinadi."""
+    def _find_matching_video_files(self, query: str, prefer_vertical: bool) -> list[dict]:
+        """Ichki yordamchi — so'rovga mos, sifat talablariga javob beradigan barcha
+        video fayllarni TOPILGAN TARTIBDA (eng yaxshisidan eng yomoniga) qaytaradi.
+        `fetch_video` (bitta eng yaxshisini) va `fetch_video_candidates` (bir nechta
+        nomzodni, agar birinchisi yuklab bo'lmasa yoki sifat nazoratidan o'tmasa,
+        keyingisini sinab ko'rish uchun) shu yerdan foydalanadi."""
         try:
             resp = requests.get(
                 PIXABAY_VIDEO_URL,
-                params={
-                    "key": self.api_key,
-                    "q": query,
-                    "per_page": 20,
-                    "safesearch": "true",
-                },
+                params={"key": self.api_key, "q": query, "per_page": 20, "safesearch": "true"},
                 timeout=20,
             )
             resp.raise_for_status()
             hits = resp.json().get("hits", [])
-            if not hits:
-                logger.info("Pixabay'da '%s' uchun video topilmadi", query)
-                return None
-
-            hits = _filter_by_relevance(hits, query)
-
-            matching = []
-            for hit in hits:
-                best_file = _pick_best_pixabay_video_file(hit.get("videos", {}))
-                if not best_file:
-                    continue
-                is_vertical = best_file["height"] > best_file["width"]
-                if is_vertical == prefer_vertical:
-                    matching.append(best_file)
-
-            if not matching:
-                logger.info(
-                    "Pixabay'da '%s' uchun %s formatdagi %dp+ sifatli video topilmadi",
-                    query,
-                    "vertikal" if prefer_vertical else "gorizontal",
-                    MIN_VIDEO_DIMENSION,
-                )
-                return None
-
-            chosen = _rank_and_pick(matching, lambda f: f["width"] * f["height"])
-            return chosen["url"]
         except requests.RequestException as exc:
             logger.warning("Pixabay video so'rovida xatolik (%s): %s", query, exc)
+            return []
+
+        if not hits:
+            logger.info("Pixabay'da '%s' uchun video topilmadi", query)
+            return []
+
+        hits = _filter_by_relevance(hits, query)
+        matching = []
+        for hit in hits:
+            best_file = _pick_best_pixabay_video_file(hit.get("videos", {}))
+            if not best_file:
+                continue
+            is_vertical = best_file["height"] > best_file["width"]
+            if is_vertical == prefer_vertical:
+                matching.append(best_file)
+
+        if not matching:
+            logger.info(
+                "Pixabay'da '%s' uchun %s formatdagi %dp+ sifatli video topilmadi",
+                query, "vertikal" if prefer_vertical else "gorizontal", MIN_VIDEO_DIMENSION,
+            )
+        return sorted(matching, key=lambda f: f["width"] * f["height"], reverse=True)
+
+    def fetch_video(self, query: str, prefer_vertical: bool = True) -> str | None:
+        """Faqat BITTA (eng yaxshi, tasodifiy tanlangan) video havolasini qaytaradi.
+        Bir nechta nomzod kerak bo'lsa (masalan biri yuklab bo'lmasa, keyingisini
+        sinash uchun), `fetch_video_candidates()`dan foydalaning."""
+        matching = self._find_matching_video_files(query, prefer_vertical)
+        if not matching:
             return None
+        chosen = _rank_and_pick(matching, lambda f: f["width"] * f["height"])
+        return chosen["url"]
+
+    def fetch_video_candidates(self, query: str, prefer_vertical: bool = True, max_results: int = 4) -> list[str]:
+        """`fetch_video`dan farqli — BIR NECHTA nomzod havolasini (eng yaxshisidan
+        boshlab) ro'yxat sifatida qaytaradi. run.py buni "birinchi nomzod yuklab
+        bo'lmasa yoki sifat nazoratidan (ffmpeg qayta ishlash, bo'sh-kadr tekshiruvi)
+        o'tmasa — keyingisini sinash" uchun ishlatadi, shunda faqat BITTA muammoli
+        fayl tufayli butun post rasm bilan cheklanib qolmaydi."""
+        matching = self._find_matching_video_files(query, prefer_vertical)
+        return [f["url"] for f in matching[:max_results]]
