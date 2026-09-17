@@ -34,13 +34,15 @@ from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
-from .facets import FACETS, build_hashtags, build_query_variants
+from .facets import FACETS, FACETS_BY_KEY, build_hashtags, build_query_variants
 from .local_footage import find_local_video
-from .media_fetcher import MediaFetcher, download_file
+from .media_fetcher import MediaFetcher, download_bytes, download_file
 from .music_mixer import prepare_video_for_posting
+from .photo_overlay import add_branding_overlay
+from .content_quality import is_blank_image_bytes, is_blank_video_file
 from .pixabay_fetcher import PixabayFetcher
 from .places import PLACES
-from .state import get_current_theme, mark_facet_used, pick_next_facet
+from .state import get_current_theme, increment_and_get_post_count, mark_facet_used, pick_next_facet
 from shared.telegram_poster import TelegramPoster
 from shared.hashtags import format_hashtags
 from .topics import get_topic_pool
@@ -49,23 +51,27 @@ from .wikimedia_fetcher import WikimediaFetcher
 logger = logging.getLogger(__name__)
 
 
-def build_caption(theme: str, facet: dict) -> str:
+def build_caption(theme: str, facet: dict, include_follow_reminder: bool = False) -> str:
     # Telegram parse_mode="HTML" bilan yuborilgani uchun, dinamik matndagi &, <, >
     # kabi belgilar albatta escape qilinishi shart — aks holda Telegram "can't parse
     # entities" xatosi bilan butun postni rad etadi.
     #
-    # MUHIM (ataylab soddalashtirilgan): avval bu yerda Wikipedia'dan olingan qisqacha
-    # ma'lumot (summary) ham qo'shilardi. LEKIN bu xavfli bo'lib chiqdi — Wikipedia
-    # qidiruvi ba'zan noto'g'ri (masalan xuddi shu nomdagi kino/qo'shiq haqidagi)
-    # maqolaga tushib qolishi mumkin edi (topics.py'dagi filtr tuzatilgan bo'lsa-da,
-    # bunday xato boshqa ko'rinishda ham chiqishi mumkin). Shuning uchun endi caption
-    # FAQAT joy nomi va qirra — hech qanday qo'shimcha matn/izoh yo'q, demak noto'g'ri
-    # ma'lumot berish xavfi ham UMUMAN yo'q.
+    # MUHIM (foydalanuvchi so'rovi bilan yakuniy soddalashtirilgan): avval sarlavhada
+    # qirra nomi ham ko'rinardi ("Joy nomi — sharsharasi" kabi). Endi HECH QANDAY
+    # qo'shimcha izoh/matn yo'q — FAQAT joy nomi. Qirra endi faqat (1) qidiruv so'zini
+    # tanlashda va (2) hashteg ro'yxatini boyitishda ICHKI ishlatiladi, caption'da
+    # umuman ko'rinmaydi. Bu ham eng sodda, ham eng xavfsiz variant (Wikipedia'dan
+    # noto'g'ri ma'lumot kelish xavfi ilgari olib tashlangan edi; endi qo'shimcha
+    # matn umuman yo'qligi uchun bunday xavf tag'in ham yo'q).
     theme_esc = html.escape(theme)
-    facet_esc = html.escape(facet["label"])
-    header = f"🌍 <b>{theme_esc}</b> — {facet_esc}"
+    header = f"🌍 <b>{theme_esc}</b>"
     footer = "\n\n" + format_hashtags(build_hashtags(theme, facet))
-    return header + footer
+    # MUHIM (foydalanuvchi ikkilanishi bilan): "faqat nomi, boshqa hech narsa
+    # yozilmasin" degan qat'iy ko'rsatmangizga ATAYLAB ziddiyatga kirmaslik uchun, bu
+    # qo'shimcha qator STANDART HOLATDA O'CHIRILGAN (NATURE_FOLLOW_REMINDER_EVERY_N=0).
+    # Faqat o'zingiz .env'da yoqsangiz (masalan =5 — har 5-postda bir marta) qo'shiladi.
+    reminder = "\n\n🔔 Follow for more" if include_follow_reminder else ""
+    return header + reminder + footer
 
 
 def _fetch_with_fallback(sources: list[tuple[str, callable]], variants: list[str], kind: str) -> tuple[str, str] | None:
@@ -85,9 +91,16 @@ def _fetch_with_fallback(sources: list[tuple[str, callable]], variants: list[str
     return None
 
 
-def run_once() -> int:
-    """Bitta postni tanlaydi va joylaydi. scheduler.py ichidan har 30 daqiqada chaqiriladi,
-    yoki Task Scheduler/cron bilan qo'lda ham ishga tushirish mumkin."""
+def run_once(forced_facet_key: str | None = None) -> int:
+    """Bitta postni tanlaydi va joylaydi. scheduler.py ichidan chaqiriladi (standart:
+    kunlik kategoriya-vaqt jadvali bo'yicha — bots/nature/schedule.py'ga qarang), yoki
+    Task Scheduler/cron bilan qo'lda ham ishga tushirish mumkin.
+
+    `forced_facet_key` berilsa (masalan "sunrise", "wildlife" — facets.py'dagi FACETS
+    ro'yxatidagi "key" maydoniga mos), oddiy tasodifiy/navbat bilan qirra tanlash
+    ATLAB QILINADI — kunlik jadval ("06:00 -> sunrise, 08:00 -> wildlife" kabi) shu
+    orqali ishlaydi. Joy (theme) esa BARIBIR odatdagi 4 soatlik oyna mantig'i bo'yicha
+    tanlanadi — faqat qirra (mavzuning "qaysi tomoni" ko'rsatilishi) qat'iy belgilanadi."""
     load_dotenv()
 
     bot_token = os.getenv("NATURE_TELEGRAM_BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN")
@@ -113,7 +126,15 @@ def run_once() -> int:
     pool = get_topic_pool(seed_places=seed_places)
     theme = get_current_theme(pool)
 
-    facet_idx, facet = pick_next_facet(FACETS)
+    if forced_facet_key:
+        facet = FACETS_BY_KEY.get(forced_facet_key)
+        if not facet:
+            logger.error("Noma'lum forced_facet_key: %r. facets.py'dagi FACETS_BY_KEY'ga qarang.", forced_facet_key)
+            return 1
+        facet_idx = FACETS.index(facet)
+        logger.info("Kunlik jadval bo'yicha qirra belgilandi: %s", facet["label"])
+    else:
+        facet_idx, facet = pick_next_facet(FACETS)
     variants = build_query_variants(theme, facet)
     logger.info("Joriy mavzu: %s | Qirra: %s | Qidiruv variantlari: %s", theme, facet["label"], variants)
 
@@ -122,13 +143,18 @@ def run_once() -> int:
     wikimedia = WikimediaFetcher()  # API kalit shart emas, doim faol qo'shimcha manba
 
     def _video_sources(prefer_vertical: bool):
-        # Pexels avval sinaladi (asosiy manba), Pixabay ikkinchi zaxira, Wikimedia Commons
-        # esa uchinchi (har doim mavjud, kalit talab qilmaydi) zaxira — uchtasi birlashganda
-        # video topilish ehtimoli yanada oshadi. Har birida natijalar sifat (o'lcham) bo'yicha
-        # saralanib, eng yaxshisi tanlanadi.
-        sources = [("Pexels", lambda q, pv=prefer_vertical: media.fetch_video(q, prefer_vertical=pv))]
+        # MUHIM (foydalanuvchi so'rovi bilan o'zgartirilgan): avval Pexels asosiy manba
+        # edi (chunki u yagona haqiqiy 4K taklif qiluvchi manba — Pixabay video uchun
+        # platformaning o'zi tomonidan 1920x1080 bilan cheklangan). LEKIN foydalanuvchi
+        # ikkala platformani QO'LDA solishtirib ko'rib, Pixabay'da vizual jihatdan ancha
+        # chiroyli/e'tiborni tortadigan videolar ko'proq ekanini aniqladi — shuning uchun
+        # ATAYLAB piksel sonidan ko'ra vizual jozibadorlikni ustun qo'yib, Pixabay
+        # BIRINCHI sinaladi. Agar Pixabay kalit sozlanmagan bo'lsa (pixabay obyekti
+        # yo'q), avtomatik ravishda Pexels'dan boshlanadi — hech qanday xato bermaydi.
+        sources = []
         if pixabay:
             sources.append(("Pixabay", lambda q, pv=prefer_vertical: pixabay.fetch_video(q, prefer_vertical=pv)))
+        sources.append(("Pexels", lambda q, pv=prefer_vertical: media.fetch_video(q, prefer_vertical=pv)))
         sources.append(("Wikimedia Commons", lambda q, pv=prefer_vertical: wikimedia.fetch_video(q, prefer_vertical=pv)))
         return sources
 
@@ -139,7 +165,20 @@ def run_once() -> int:
         sources.append(("Wikimedia Commons", lambda q, pv=prefer_vertical: wikimedia.fetch_photo(q, prefer_vertical=pv)))
         return sources
 
-    caption = build_caption(theme, facet)
+    # Follow-eslatma — standart holatda O'CHIRILGAN (0), foydalanuvchi ongli ravishda
+    # .env'da yoqishi kerak (masalan =5 — har 5-postda bir marta). Bu — "faqat joy
+    # nomi, boshqa hech narsa yozilmasin" degan qat'iy ko'rsatmaga hurmat yuzasidan
+    # ataylab shunday qilingan (majburan yoqilmagan).
+    try:
+        reminder_every_n = int(os.getenv("NATURE_FOLLOW_REMINDER_EVERY_N", "0"))
+    except ValueError:
+        reminder_every_n = 0
+    include_reminder = False
+    if reminder_every_n > 0:
+        post_count = increment_and_get_post_count()
+        include_reminder = (post_count % reminder_every_n == 0)
+
+    caption = build_caption(theme, facet, include_follow_reminder=include_reminder)
 
     poster = TelegramPoster(bot_token, channel_id)
 
@@ -164,11 +203,11 @@ def run_once() -> int:
     video_posted = False
 
     local_video = find_local_video(variants, prefer_vertical=True)
-    if local_video:
+    if local_video and not is_blank_video_file(local_video):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
             final_path = tmp_path / "final_video.mp4"
-            if prepare_video_for_posting(local_video, final_path):
+            if prepare_video_for_posting(local_video, final_path, location_text=theme):
                 video_posted = poster.post_video_file(final_path, caption)
             else:
                 video_posted = poster.post_video_file(local_video, caption)
@@ -189,11 +228,20 @@ def run_once() -> int:
                 url_suffix = Path(urlparse(video_url).path).suffix
                 raw_path = tmp_path / f"raw_video{url_suffix or '.mp4'}"
                 if download_file(video_url, raw_path):
-                    final_path = tmp_path / "final_video.mp4"
-                    if prepare_video_for_posting(raw_path, final_path):
-                        video_posted = poster.post_video_file(final_path, caption)
+                    if is_blank_video_file(raw_path):
+                        # MUHIM (foydalanuvchi tomonidan aniqlangan muammo): ba'zan
+                        # stock-kutubxonadan texnik jihatdan "buzuq" (qora ekran yoki
+                        # bir xil rangli) fayl kelishi mumkin edi — bunday holda avval
+                        # baribir joylanardi. Endi bunday fayl ANIQLANADI va JOYLANMAYDI
+                        # (bo'sh post qoldirish, noto'g'ri/mazmunsiz post joylashdan
+                        # ancha yaxshi).
+                        logger.warning("'%s' manbasidan kelgan video bo'sh/qora ekan deb aniqlandi - joylanmaydi.", source_name)
                     else:
-                        video_posted = poster.post_video_file(raw_path, caption)
+                        final_path = tmp_path / "final_video.mp4"
+                        if prepare_video_for_posting(raw_path, final_path, location_text=theme):
+                            video_posted = poster.post_video_file(final_path, caption)
+                        else:
+                            video_posted = poster.post_video_file(raw_path, caption)
                 else:
                     # Diskka yuklab bo'lmasa, to'g'ridan-to'g'ri URL orqali joylashga
                     # urinamiz (musiqasiz, lekin postsiz qolgandan yaxshi).
@@ -207,8 +255,31 @@ def run_once() -> int:
         if not photo_result:
             photo_result = _fetch_with_fallback(_photo_sources(False), variants, "Rasm (gorizontal)")
         if photo_result:
-            _, photo_url = photo_result
-            photo_posted = poster.post_photo(photo_url, caption)
+            source_name, photo_url = photo_result
+            # Video bilan bir xil "pro" brendlash uslubini (joy nomi + kanal
+            # belgisi, yarim shaffof fon) rasmga ham qo'shamiz — buning uchun
+            # rasm avval xotiraga yuklanishi kerak (post_photo kabi to'g'ridan-to'g'ri
+            # URL orqali joylash overlay chizishga imkon bermaydi).
+            photo_bytes = download_bytes(photo_url)
+            blank_detected = False
+            if photo_bytes and is_blank_image_bytes(photo_bytes):
+                # Video bilan bir xil sabab: qora/bir xil rangli "buzuq" rasm hech
+                # qachon joylanmasligi kerak — MUHIM: bu holatda pastdagi "xotiraga
+                # yuklab bo'lmadi" zaxira yo'liga ham tushmasligi kerak, aks holda
+                # xuddi shu bo'sh rasm URL orqali baribir joylanib qolardi.
+                logger.warning("'%s' manbasidan kelgan rasm bo'sh/bir xil rangdan iborat deb aniqlandi - joylanmaydi.", source_name)
+                photo_bytes = None
+                blank_detected = True
+            overlaid = add_branding_overlay(photo_bytes, theme, os.getenv("NATURE_BRAND_LABEL", "Nature Channel")) if photo_bytes else None
+            if overlaid:
+                photo_posted = poster.post_photo_bytes(overlaid, caption)
+            elif photo_bytes:
+                photo_posted = poster.post_photo_bytes(photo_bytes, caption)
+            elif not blank_detected:
+                # Xotiraga yuklab bo'lmadi (tarmoq xatoligi va h.k.) - to'g'ridan-to'g'ri
+                # URL orqali joylashga urinamiz (overlay'siz, lekin postsiz qolgandan
+                # yaxshi). Bo'sh deb ANIQLANGAN holatda esa bu yo'l ISHLATILMAYDI.
+                photo_posted = poster.post_photo(photo_url, caption)
             if not photo_posted:
                 logger.error("'%s' (%s) uchun rasmni joylashda xatolik.", theme, facet["label"])
 

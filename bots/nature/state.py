@@ -108,3 +108,16 @@ def mark_facet_used(idx: int) -> None:
     state["used_facets"] = sorted(used)
     state["window"] = window
     _save_json(STATE_FILE, state)
+
+
+POST_COUNTER_FILE = Path(__file__).parent / "post_counter.json"
+
+
+def increment_and_get_post_count() -> int:
+    """Har bir muvaffaqiyatli post uchun +1 qiladigan oddiy hisoblagich — masalan "har
+    N-postda bir marta follow-eslatma qo'shish" kabi davriy funksiyalar uchun
+    ishlatiladi (run.py'dagi NATURE_FOLLOW_REMINDER_EVERY_N)."""
+    state = _load_json(POST_COUNTER_FILE, {"count": 0})
+    state["count"] = state.get("count", 0) + 1
+    _save_json(POST_COUNTER_FILE, state)
+    return state["count"]

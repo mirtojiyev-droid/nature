@@ -1,28 +1,57 @@
 """
 Bitta (4 soatlik oynadagi) mavzuning (joyning) turli "go'zal go'shalari" — oyna davomida
-bir xil joy haqida bir necha xil qirradan post qilish uchun. Har birida: caption'da ko'rinadigan o'zbekcha
-yorliq, va Pexels qidiruviga qo'shiladigan inglizcha so'z (bo'sh bo'lsa, faqat joy nomining
-o'zi bilan qidiriladi — "umumiy manzara").
+bir xil joy haqida bir necha xil qirradan post qilish uchun. Har birida: caption'da
+KO'RINMAYDIGAN (faqat Pexels/Pixabay qidiruvi uchun ishlatiladigan) inglizcha so'z, va
+shu qirraga xos, qidiruvda kuchli hashteglar ro'yxati.
+
+MUHIM (foydalanuvchi so'rovi bilan o'zgartirilgan): avval caption'da qirra nomi ham
+ko'rinardi ("🌍 Joy nomi — sharsharasi" kabi). Endi caption FAQAT joy nomidan iborat —
+qirra hech qanday izoh/matn sifatida ko'rinmaydi, faqat (1) qidiruv so'zini tanlashda va
+(2) hashteg ro'yxatini boyitishda ICHKI ravishda ishlatiladi.
 """
 
 FACETS = [
-    {"label": "umumiy manzarasi", "suffix": "", "hashtags": ["sayohat", "travel"]},
-    {"label": "sharsharasi", "suffix": "waterfall", "hashtags": ["sharshara", "waterfall"]},
-    {"label": "sohili", "suffix": "beach coast", "hashtags": ["plyaj", "beach"]},
-    {"label": "tog' manzarasi", "suffix": "mountain peak", "hashtags": ["toglar", "mountains"]},
-    {"label": "yovvoyi tabiati", "suffix": "wildlife animals", "hashtags": ["hayvonotolami", "wildlife"]},
-    {"label": "quyosh botishi", "suffix": "sunset", "hashtags": ["quyoshbotishi", "sunset"]},
-    {"label": "quyosh chiqishi", "suffix": "sunrise", "hashtags": ["quyoshchiqishi", "sunrise"]},
-    {"label": "havodan ko'rinishi", "suffix": "aerial drone view", "hashtags": ["dronvideo", "aerial"]},
-    {"label": "o'rmoni", "suffix": "forest trees", "hashtags": ["ormon", "forest"]},
-    {"label": "ko'li yoki daryosi", "suffix": "lake river", "hashtags": ["kol", "river"]},
-    {"label": "vodiysi", "suffix": "valley landscape", "hashtags": ["vodiy", "valley"]},
-    {"label": "tungi manzarasi", "suffix": "night stars", "hashtags": ["tungisman", "stars"]},
+    {"key": "general", "label": "umumiy manzarasi", "suffix": "",
+     "hashtags": ["sayohat", "travel"]},
+    {"key": "waterfall", "label": "sharsharasi", "suffix": "waterfall",
+     "hashtags": ["sharshara", "waterfall"]},
+    {"key": "beach", "label": "sohili", "suffix": "beach coast",
+     "hashtags": ["plyaj", "beach"]},
+    {"key": "mountain", "label": "tog' manzarasi", "suffix": "mountain peak",
+     "hashtags": ["toglar", "mountains"]},
+    {"key": "wildlife", "label": "yovvoyi tabiati", "suffix": "wildlife animals",
+     "hashtags": ["hayvonotolami", "wildlife"]},
+    {"key": "sunset", "label": "quyosh botishi", "suffix": "sunset",
+     "hashtags": ["quyoshbotishi", "sunset"]},
+    {"key": "sunrise", "label": "quyosh chiqishi", "suffix": "sunrise",
+     "hashtags": ["quyoshchiqishi", "sunrise"]},
+    {"key": "aerial", "label": "havodan ko'rinishi", "suffix": "aerial drone view",
+     "hashtags": ["dronvideo", "aerial"]},
+    {"key": "forest", "label": "o'rmoni", "suffix": "forest trees",
+     "hashtags": ["ormon", "forest"]},
+    {"key": "lake", "label": "ko'li yoki daryosi", "suffix": "lake river",
+     "hashtags": ["kol", "river"]},
+    {"key": "valley", "label": "vodiysi", "suffix": "valley landscape",
+     "hashtags": ["vodiy", "valley"]},
+    {"key": "night", "label": "tungi manzarasi", "suffix": "night stars",
+     "hashtags": ["tungisman", "stars"]},
+    {"key": "birds", "label": "qushlari", "suffix": "birds flying",
+     "hashtags": ["qushlar", "birds"]},
+    {"key": "rain", "label": "yomg'iri", "suffix": "rain",
+     "hashtags": ["yomgir", "rain"]},
 ]
 
-# Kanalning "asosiy", eng mashhur/umumiy hashteglari — mavzu/qirradan qat'i nazar HAR
-# doim qo'shiladi (kanal nomiga/mavzusiga moslab: tabiat/sayohat kanali).
-CHANNEL_HASHTAGS = ["tabiat", "nature"]
+FACETS_BY_KEY = {f["key"]: f for f in FACETS}
+
+# Kanalning hashteglari — HAR doim shu ikkitasi + joy nomi qo'shiladi (jami 3 ta).
+# MUHIM (foydalanuvchi qarori bilan yanada soddalashtirilgan): avval bu yerga qirraga
+# xos hashteg(lar) ham (masalan "river", "sunset") qo'shilardi — lekin foydalanuvchi
+# buni caption/overlay'dagi "qoldiq izoh" sifatida qabul qildi (garchi caption va
+# video/rasm overlay'ining o'zi allaqachon FAQAT joy nomidan iborat bo'lsa-da — hashteg
+# orqali qirra turi "sizib chiqib" ketardi). Endi hashteglar FAQAT umumiy (#Nature,
+# #naturephotography) + joy nomidan iborat — hech qanday tur/kategoriya oshkor
+# qilinmaydi.
+CHANNEL_HASHTAGS = ["Nature", "naturephotography"]
 
 
 def build_query(base_place: str, facet: dict) -> str:
@@ -33,16 +62,16 @@ def build_query(base_place: str, facet: dict) -> str:
 
 
 def build_hashtags(theme: str, facet: dict) -> list[str]:
-    """Post tagiga qo'shiladigan hashteglar ro'yxatini tayyorlaydi: kanalning umumiy
-    (eng mashhur/mavzuga mos) hashteglari + shu joyga xos hashteg + shu qirraga xos
-    hashteg(lar) — kamida 4 tadan iborat bo'ladi."""
+    """Post tagiga qo'shiladigan hashteglar ro'yxatini tayyorlaydi: FAQAT kanalning
+    umumiy hashteglari + joy nomi — jami 3 ta. Qirraga xos hashteg ATAYLAB
+    qo'shilmaydi (foydalanuvchi qarori: hech qanday "tur/kategoriya" izohi sizib
+    chiqmasin, faqat joy nomi va kanal brendi ko'rinsin)."""
     from shared.hashtags import slugify_hashtag
 
     tags = list(CHANNEL_HASHTAGS)
     place_tag = slugify_hashtag(theme)
     if place_tag:
         tags.append(place_tag)
-    tags.extend(facet.get("hashtags", []))
     return tags
 
 

@@ -65,6 +65,7 @@ logger = logging.getLogger("hub")
 from bots.crypto import run_once as run_crypto  # noqa: E402
 from bots.football import run_once as run_football  # noqa: E402
 from bots.nature import run_once as run_nature  # noqa: E402
+from bots.nature.schedule_config import NATURE_DAILY_SCHEDULE  # noqa: E402
 
 
 def _env_int(name: str, default: int) -> int:
@@ -191,6 +192,25 @@ def setup_schedule() -> bool:
     for name, channel_env, interval_env, default_interval, fn, label in bot_configs:
         if not os.getenv(channel_env):
             logger.info("%s boti o'chirilgan (%s sozlanmagan).", label, channel_env)
+            continue
+
+        # MUHIM (foydalanuvchi bilan kelishilgan o'sish rejasi): tabiat boti standart
+        # bo'yicha endi har 30 daqiqada (kuniga 48 marta) emas, balki KUNLIK,
+        # kategoriya-vaqtga bog'langan jadval bo'yicha (kuniga 12 marta, har biri aniq
+        # vaqtda va aniq mavzu turida — bots/nature/schedule_config.py) ishlaydi. Buni
+        # o'chirib, eski (interval-based) rejimga qaytish uchun .env'da
+        # NATURE_USE_DAILY_SCHEDULE=false qiling.
+        if name == "tabiat" and os.getenv("NATURE_USE_DAILY_SCHEDULE", "true").lower() == "true":
+            for time_str, facet_key in NATURE_DAILY_SCHEDULE:
+                schedule.every().day.at(time_str).do(
+                    threaded_job, name, lambda fk=facet_key: run_nature(forced_facet_key=fk)
+                )
+            scheduled_count += 1
+            logger.info(
+                "%s boti KUNLIK jadval bo'yicha ishlaydi (kuniga %d marta: %s).",
+                label, len(NATURE_DAILY_SCHEDULE),
+                ", ".join(f"{t} {k}" for t, k in NATURE_DAILY_SCHEDULE),
+            )
             continue
 
         interval = _env_int(interval_env, default_interval)

@@ -27,16 +27,20 @@ def _filter_by_relevance(hits: list, query: str) -> list:
     nature") maydonini beradi. Bu — so'rov so'zi bilan hitning HAQIQATAN aloqasi
     borligini tekshirish uchun qo'shimcha ishonch signali (faqat o'lcham bo'yicha
     saralash so'rovga umuman aloqasi yo'q, lekin API javobida kelgan natijani ham
-    "eng sifatlisi" deb tanlab qo'yishi mumkin edi). Agar hech bo'lmasa bitta hit tag
-    mos kelsa, faqat SHU hitlar bilan davom etiladi (qattiqroq, mos filtr); aks holda
-    (masalan joy nomi juda noyob bo'lib, hech qanday tagda aynan uchramasa) hammasi
-    bilan davom etiladi — aks holda hit darajasi juda ko'p kamayib, deyarli hech narsa
-    topilmay qolar edi."""
+    "eng sifatlisi" deb tanlab qo'yishi mumkin edi).
+
+    MUHIM (foydalanuvchi tomonidan aniqlangan xato tuzatildi): AVVAL hech qanday hit
+    mos kelmasa, baribir BARCHA hitlar bilan davom etilardi ("aks holda hech narsa
+    topilmay qolar edi" degan mulohaza bilan) — lekin aynan shu "zaxira yo'l" orqali
+    so'rovga umuman aloqasi yo'q kontent (masalan "ocean" so'ralganda o'rmon videosi)
+    sizib o'tib ketardi. Endi mos kelmasa, BO'SH ro'yxat qaytariladi — chaqiruvchi
+    (run.py'dagi _fetch_with_fallback) bu holatda avtomatik ravishda soddaroq so'rov
+    variantiga yoki keyingi manbaga (Pexels/Wikimedia) o'tadi — bu noto'g'ri
+    mazmundagi post joylashdan ANCHA yaxshi."""
     query_words = _keywords(query)
     if not query_words:
         return hits
-    relevant = [h for h in hits if _keywords(h.get("tags", "")) & query_words]
-    return relevant or hits
+    return [h for h in hits if _keywords(h.get("tags", "")) & query_words]
 
 PIXABAY_PHOTO_URL = "https://pixabay.com/api/"
 PIXABAY_VIDEO_URL = "https://pixabay.com/api/videos/"

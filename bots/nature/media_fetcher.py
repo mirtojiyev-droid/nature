@@ -28,6 +28,19 @@ def download_file(url: str, dest_path: Path, timeout: int = 60) -> bool:
         logger.warning("Faylni yuklab olishda xatolik (%s): %s", url, exc)
         return False
 
+
+def download_bytes(url: str, timeout: int = 30) -> bytes | None:
+    """`download_file`ning xotiraga (disksiz) versiyasi — rasmga brendlash overlay
+    chizish kabi, faylni diskka saqlamasdan to'g'ridan-to'g'ri qayta ishlash kerak
+    bo'lgan hollar uchun (masalan photo_overlay.py). Xatolik bo'lsa None qaytaradi."""
+    try:
+        resp = requests.get(url, timeout=timeout)
+        resp.raise_for_status()
+        return resp.content
+    except requests.RequestException as exc:
+        logger.warning("Faylni xotiraga yuklab olishda xatolik (%s): %s", url, exc)
+        return None
+
 PEXELS_PHOTO_URL = "https://api.pexels.com/v1/search"
 PEXELS_VIDEO_URL = "https://api.pexels.com/videos/search"
 

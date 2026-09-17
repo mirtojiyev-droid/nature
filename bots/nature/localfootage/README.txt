@@ -29,3 +29,9 @@ etadi — xatolik bermaydi.
 Qo'llab-quvvatlanadigan formatlar: .mp4, .mov, .mkv, .webm, .avi — format qanday bo'lishidan
 qat'i nazar, joylashdan oldin ffmpeg orqali Telegram uchun mos H.264 formatga avtomatik
 keltiriladi (agar ffmpeg o'rnatilgan bo'lsa).
+
+QO'SHIMCHA: agar pullik obuna kutubxonasi o'rniga (yoki qo'shimcha ravishda) AI orqali
+video yaratmoqchi bo'lsangiz, `python -m bots.nature.generate_clips` vositasidan
+foydalaning — u avtomatik ravishda tavsiflovchi fayl nomlari bilan to'g'ridan-to'g'ri
+shu papkaga video yaratib joylaydi (bir nechta klipni birlashtirib, musiqa qo'shish
+imkoniyati bilan). Batafsil: bots/nature/generate_clips.py'ning boshidagi izoh.

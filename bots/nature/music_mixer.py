@@ -36,6 +36,20 @@ MUSIC_DIR = Path(__file__).parent / "music"
 FADE_SECONDS = 2
 MUSIC_EXTENSIONS = (".mp3", ".m4a", ".wav", ".ogg")
 
+# Video ustiga yoziladigan brend matni ("pro" ko'rinish uchun, quyidagi
+# _build_overlay_filter() orqali) — kanal nomingizni shu yerda o'zgartiring, yoki
+# .env'dagi NATURE_BRAND_LABEL orqali qayta belgilang.
+DEFAULT_BRAND_LABEL = "Nature Channel"
+
+_FONT_BOLD_PATHS = [
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+]
+_FONT_REGULAR_PATHS = [
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+]
+
 # Telegram Bot API orqali oddiy bot fayl yuborishning standart qattiq chegarasi.
 TELEGRAM_MAX_VIDEO_BYTES = 50 * 1024 * 1024
 
@@ -64,6 +78,57 @@ def _fallback_dimensions() -> list[int]:
 
 def _scale_filter(max_dimension: int) -> str:
     return f"scale='min({max_dimension},iw)':'min({max_dimension},ih)':force_original_aspect_ratio=decrease"
+
+
+def _first_existing_font(paths: list[str]) -> str | None:
+    for p in paths:
+        if os.path.exists(p):
+            return p
+    return None
+
+
+def _escape_drawtext(text: str) -> str:
+    """ffmpeg'ning drawtext filtri uchun matnni xavfsiz qiladi — filtr sintaksisida
+    maxsus ma'noga ega belgilarni (: ' \\ % ,) escape qiladi. Buni qilmasak, masalan
+    joy nomida qo'shtirnoq yoki ikki nuqta bo'lsa (masalan "Xi'an" yoki "12:00"),
+    butun ffmpeg buyrug'i sintaksis xatosi bilan ishlamay qolardi."""
+    return (
+        text.replace("\\", "\\\\\\\\")
+        .replace(":", "\\:")
+        .replace("'", "\u2019")  # oddiy qo'shtirnoq - ffmpeg filtr ichida muammoli, tipografik variantga almashtiramiz
+        .replace("%", "\\%")
+        .replace(",", "\\,")
+    )
+
+
+def _build_overlay_filter(location_text: str | None, brand_label: str | None) -> str | None:
+    """Video pastki qismiga joy nomi + kanal brendini "pro" ko'rinishda (yarim shaffof
+    fon + oq matn, lower-third uslubi) chizadigan drawtext filtr zanjirini yasaydi.
+    `location_text` berilmasa (None/bo'sh), overlay UMUMAN qo'shilmaydi — chaqiruvchi
+    buni ixtiyoriy sifatida ishlatishi mumkin."""
+    if not location_text:
+        return None
+    bold_font = _first_existing_font(_FONT_BOLD_PATHS)
+    regular_font = _first_existing_font(_FONT_REGULAR_PATHS)
+    if not bold_font:
+        # Shrift fayli topilmasa, drawtext filtri ishlay olmaydi (fontfile shart) -
+        # overlay'siz davom etamiz, bot baribir ishlashda davom etadi.
+        logger.info("DejaVu Sans-Bold shrifti topilmadi - video ustiga matn qo'yilmaydi.")
+        return None
+    regular_font = regular_font or bold_font
+
+    loc_escaped = _escape_drawtext(location_text)
+    parts = [
+        f"drawtext=fontfile='{bold_font}':text='{loc_escaped}':fontsize=52:fontcolor=white:"
+        f"x=56:y=h-160:box=1:boxcolor=black@0.42:boxborderw=18"
+    ]
+    if brand_label:
+        brand_escaped = _escape_drawtext(brand_label)
+        parts.append(
+            f"drawtext=fontfile='{regular_font}':text='{brand_escaped}':fontsize=30:fontcolor=white@0.88:"
+            f"x=56:y=h-88:box=1:boxcolor=black@0.32:boxborderw=12"
+        )
+    return ",".join(parts)
 
 
 def ffmpeg_available() -> bool:
@@ -116,9 +181,13 @@ def _get_video_codec(path: Path) -> str | None:
 
 
 def _build_ffmpeg_cmd(video_path: Path, output_path: Path, max_dimension: int, force_reencode: bool,
-                       duration: float | None, track: Path | None, crf: int) -> list[str]:
+                       duration: float | None, track: Path | None, crf: int,
+                       overlay_filter: str | None = None) -> list[str]:
     if force_reencode:
-        video_args = ["-vf", _scale_filter(max_dimension), "-c:v", "libx264", "-preset", "veryfast", "-crf", str(crf), "-pix_fmt", "yuv420p"]
+        vf = _scale_filter(max_dimension)
+        if overlay_filter:
+            vf = f"{vf},{overlay_filter}"
+        video_args = ["-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-crf", str(crf), "-pix_fmt", "yuv420p"]
     else:
         video_args = ["-c:v", "copy"]
 
@@ -145,9 +214,15 @@ def _build_ffmpeg_cmd(video_path: Path, output_path: Path, max_dimension: int, f
     ]
 
 
-def prepare_video_for_posting(video_path: Path, output_path: Path) -> bool:
+def prepare_video_for_posting(video_path: Path, output_path: Path,
+                               location_text: str | None = None, brand_label: str | None = None) -> bool:
     """video_path'dagi videoni Telegram uchun mos H.264/AAC mp4'ga keltiradi (kerak bo'lsa)
     va topilsa fon musiqasi qo'shadi, natijani output_path'ga saqlaydi.
+
+    `location_text` berilsa (masalan joy nomi), video pastki qismiga "pro" ko'rinishdagi
+    (yarim shaffof fon + oq matn) brendlash matni bitta ffmpeg bosqichida qo'shiladi —
+    alohida ikkinchi qayta kodlash bosqichi KERAK EMAS (samaradorlik uchun muhim).
+    `brand_label` berilmasa, `.env`dagi NATURE_BRAND_LABEL yoki standart qiymat ishlatiladi.
 
     Eng yuqori sifat (4K, TARGET_MAX_DIMENSION) bilan boshlanadi. Manba allaqachon H.264
     bo'lsa va qayta kodlash shart bo'lmasa, video striim shunchaki nusxalanadi (tez, sifat
@@ -174,16 +249,22 @@ def prepare_video_for_posting(video_path: Path, output_path: Path) -> bool:
     if not track:
         logger.info("music/ papkasida musiqa fayli topilmadi — faqat kodek/o'lcham moslashtiriladi.")
 
+    brand_label = brand_label or os.getenv("NATURE_BRAND_LABEL", DEFAULT_BRAND_LABEL)
+    overlay_filter = _build_overlay_filter(location_text, brand_label)
+    if overlay_filter:
+        logger.info("Video ustiga brendlash matni qo'shiladi: '%s' / '%s'", location_text, brand_label)
+
     last_error = None
     success = False
     fallback_dimensions = _fallback_dimensions()
     for attempt_idx, max_dimension in enumerate(fallback_dimensions):
-        # Birinchi urinishda, agar manba allaqachon H.264 bo'lsa, striim nusxalanadi
-        # (tezroq, sifat yo'qolmaydi). Hajm 50MB'dan oshib, keyingi (pastroq) bosqichga
-        # o'tilsa, endi albatta qayta kodlash orqali kichraytiriladi.
-        force_reencode = (codec != "h264") or (attempt_idx > 0)
+        # Birinchi urinishda, agar manba allaqachon H.264 bo'lsa VA overlay so'ralmagan
+        # bo'lsa, striim nusxalanadi (tezroq, sifat yo'qolmaydi). Overlay so'ralgan bo'lsa,
+        # matnni "kuydirish" uchun albatta qayta kodlash SHART (stream-copy orqali matn
+        # qo'shib bo'lmaydi) — shuning uchun bu holatda force_reencode har doim True.
+        force_reencode = (codec != "h264") or (attempt_idx > 0) or bool(overlay_filter)
         crf = 23 if attempt_idx == 0 else 26  # pastroq bosqichlarda biroz ko'proq siqiladi
-        cmd = _build_ffmpeg_cmd(video_path, output_path, max_dimension, force_reencode, duration, track, crf)
+        cmd = _build_ffmpeg_cmd(video_path, output_path, max_dimension, force_reencode, duration, track, crf, overlay_filter)
 
         try:
             subprocess.run(cmd, capture_output=True, text=True, timeout=300, check=True)
