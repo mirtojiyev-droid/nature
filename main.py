@@ -236,6 +236,37 @@ def setup_schedule() -> bool:
                 label, len(NATURE_DAILY_SCHEDULE),
                 ", ".join(f"{t} {k}" for t, k in NATURE_DAILY_SCHEDULE),
             )
+
+            # MUHIM (foydalanuvchi savoli asosida aniqlangan va tuzatilgan kamchilik):
+            # yuqoridagi `schedule.every().day.at(...)` FAQAT KELAJAKDAGI eng yaqin
+            # vaqtni rejalashtiradi. Agar jarayon aynan bir jadval vaqtidan (masalan
+            # 08:00) SAL KEYIN qayta ishga tushsa (Render qayta deploy qildi, yoki
+            # xotira sababli avtomatik restart bo'ldi) va ESKI jarayon 08:00'ni hali
+            # ulgurmagan bo'lsa — bu post hech qachon joylanmasdan, to'g'ridan-to'g'ri
+            # ERTANGI 08:00'gacha "yo'qolib" qolardi (chunki eng yaqin kelajakdagi 08:00
+            # — bu ertaga). Kripto/futbolda bu muammo yo'q edi, chunki ular pastdagi
+            # "yaqinda ishlaganmi" tekshiruvidan o'tadi — lekin tabiat undan oldin
+            # `continue` bilan chiqib ketardi. Endi: bugungi eng so'nggi "o'tib ketgan"
+            # jadval vaqtini topamiz, va agar tabiat o'sha vaqtdan beri ISHLAMAGAN
+            # bo'lsa (last_run_times orqali — bu ham diskka yozilgani uchun qayta
+            # ishga tushishlar orasida saqlanadi), DARHOL o'sha vaqtning qirrasi bilan
+            # bir marta (o'tkazib yubormaslik uchun) ishga tushiramiz.
+            now_dt = datetime.now()
+            passed_today = [
+                (datetime.combine(now_dt.date(), datetime.strptime(t, "%H:%M").time()), fk)
+                for t, fk in NATURE_DAILY_SCHEDULE
+                if datetime.combine(now_dt.date(), datetime.strptime(t, "%H:%M").time()) <= now_dt
+            ]
+            if passed_today:
+                latest_slot_dt, latest_facet_key = max(passed_today, key=lambda x: x[0])
+                last = last_run_times.get(name)
+                if last is None or datetime.fromtimestamp(last) < latest_slot_dt:
+                    logger.info(
+                        "  -> %s eng so'nggi jadval vaqti (%s, qirra: %s) o'tkazib yuborilgan bo'lishi mumkin "
+                        "(jarayon qayta ishga tushgan) — darhol shu qirra bilan bir marta ishga tushiriladi.",
+                        label, latest_slot_dt.strftime("%H:%M"), latest_facet_key,
+                    )
+                    threaded_job(name, lambda fk=latest_facet_key: run_nature(forced_facet_key=fk))
             continue
 
         interval = _env_int(interval_env, default_interval)
