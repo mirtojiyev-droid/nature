@@ -135,13 +135,35 @@ def ffmpeg_available() -> bool:
     return shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
 
 
+def _is_valid_audio_file(path: Path) -> bool:
+    """`path` haqiqatan ochiladigan, audio oqimiga ega faylmi — tekshiradi. MUHIM
+    (haqiqiy voqeada aniqlangan muammo): foydalanuvchi music/ papkasiga qo'shgan
+    ba'zi fayllar (masalan noodatiy kodlash/buzuq meta-ma'lumot bilan) ffmpeg'ning
+    `-stream_loop` + filtr birikmasida barcha sifat darajalarida ham xato berishiga
+    sabab bo'lgan edi — bitta buzuq musiqa fayli tufayli BUTUN video (barcha 4
+    urinish ham) muvaffaqiyatsiz bo'lib qolardi. Endi bunday fayl OLDINDAN
+    aniqlanadi va o'tkazib yuboriladi (boshqa trek sinaladi, yoki musiqasiz
+    davom etiladi) — bitta buzuq faylning butun videoni "yiqitishi" oldini oladi."""
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(path)],
+            capture_output=True, text=True, timeout=20,
+        )
+        return result.returncode == 0 and "audio" in result.stdout
+    except (subprocess.SubprocessError, OSError):
+        return False
+
+
 def _pick_music_track() -> Path | None:
     if not MUSIC_DIR.exists():
         return None
     tracks = [p for p in MUSIC_DIR.iterdir() if p.suffix.lower() in MUSIC_EXTENSIONS]
-    if not tracks:
-        return None
-    return random.choice(tracks)
+    random.shuffle(tracks)
+    for track in tracks:
+        if _is_valid_audio_file(track):
+            return track
+        logger.warning("Musiqa fayli (%s) buzuq/noto'g'ri formatda ko'rinadi - o'tkazib yuborildi.", track.name)
+    return None
 
 
 def _get_duration_seconds(path: Path) -> float | None:
@@ -304,7 +326,11 @@ def prepare_video_for_posting(video_path: Path, output_path: Path,
             logger.warning("Barcha sifat bosqichlarida ham video Telegram hajm chegarasidan katta chiqdi — eng pastki (%dpx) variant baribir joylanadi.", fallback_dimensions[-1])
 
     if not success:
-        logger.warning("ffmpeg orqali videoni tayyorlab bo'lmadi, asl fayl joylanadi: %s", last_error)
+        # MUHIM (chalkashtiruvchi eski matn tuzatildi): bu funksiya False qaytarganda,
+        # chaqiruvchi (run.py) ENDI xom faylni joylamaydi — bu nomzod butunlay rad
+        # etiladi va navbatdagi nomzod sinaladi. Shuning uchun matn "hech qanday fayl
+        # joylanmaydi" deb aniq yozilgan, avvalgi ("asl fayl joylanadi") noto'g'ri edi.
+        logger.warning("ffmpeg orqali videoni hech qanday sifat darajasida tayyorlab bo'lmadi (bu nomzod rad etiladi): %s", last_error)
         return False
 
     if track:

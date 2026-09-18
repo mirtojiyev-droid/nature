@@ -47,6 +47,7 @@ from .media_fetcher import download_bytes, download_file
 from .music_mixer import prepare_video_for_posting
 from .photo_overlay import add_branding_overlay
 from .content_quality import is_blank_image_bytes, is_blank_video_file
+from .pexels_fetcher import PexelsFetcher
 from .pixabay_fetcher import PixabayFetcher
 from .places import PLACES
 from .state import get_current_theme, increment_and_get_post_count, mark_facet_used, pick_next_facet
@@ -165,6 +166,7 @@ def run_once(forced_facet_key: str | None = None) -> int:
     bot_token = os.getenv("NATURE_TELEGRAM_BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN")
     channel_id = os.getenv("NATURE_TELEGRAM_CHANNEL_ID")
     pixabay_key = os.getenv("PIXABAY_API_KEY")
+    pexels_key = os.getenv("PEXELS_API_KEY")
     post_photo_too = os.getenv("NATURE_POST_PHOTO_TOO", "true").lower() == "true"
 
     missing = [
@@ -196,13 +198,15 @@ def run_once(forced_facet_key: str | None = None) -> int:
     variants = build_query_variants(theme, facet, fallback_category=get_place_category(theme))
     logger.info("Joriy mavzu: %s | Qirra: %s | Qidiruv variantlari: %s", theme, facet["label"], variants)
 
-    # MUHIM (foydalanuvchi qarori): Pexels butunlay OLIB TASHLANDI — foydalanuvchi
-    # ikkala platformani qo'lda solishtirib, Pixabay'da vizual jihatdan ancha
-    # chiroyli/e'tiborni tortadigan kontent ko'proq ekanini aniqladi. Endi BARCHA
-    # video/rasm FAQAT Pixabay'dan olinadi (Wikimedia Commons hamon oxirgi,
-    # kalitsiz zaxira manba sifatida qoladi — Pixabay birror sababdan hech narsa
-    # topa olmasa, bot butunlay postsiz qolmasligi uchun).
+    # MUHIM (foydalanuvchi tarixi): dastlab Pexels butunlay olib tashlangan edi
+    # (Pixabay'ni qo'lda solishtirib, ko'proq yoqqani uchun). Keyinroq foydalanuvchi
+    # Pexels'dagi videolar ham chiroyli chiqayotganini va Pixabay ba'zan (ayniqsa
+    # noyob joy nomlari uchun) yetarli natija bermayotganini payqab, Pexels'ni
+    # QO'SHIMCHA (ikkinchi, Pixabay'dan KEYIN sinaladigan) manba sifatida qaytarishni
+    # so'radi. Endi tartib: Pixabay (asosiy) -> Pexels (qo'shimcha, agar kalit
+    # sozlangan bo'lsa) -> Wikimedia Commons (oxirgi, kalitsiz zaxira).
     pixabay = PixabayFetcher(pixabay_key)
+    pexels = PexelsFetcher(pexels_key) if pexels_key else None
     wikimedia = WikimediaFetcher()  # API kalit shart emas, doim faol qo'shimcha manba
 
     def _video_sources(prefer_vertical: bool):
@@ -211,16 +215,18 @@ def run_once(forced_facet_key: str | None = None) -> int:
         # birinchi nomzod yuklab bo'lmasa yoki sifat nazoratidan o'tmasa, RO'YXATDAGI
         # KEYINGI nomzodni avtomatik sinab ko'radi (foydalanuvchi so'rovi: "topgan va
         # tekshiruvdan o'tgan videoni yuklay olmasa, boshqasini qidirsin").
-        return [
-            ("Pixabay", lambda q, pv=prefer_vertical: pixabay.fetch_video_candidates(q, prefer_vertical=pv)),
-            ("Wikimedia Commons", lambda q, pv=prefer_vertical: wikimedia.fetch_video_candidates(q, prefer_vertical=pv)),
-        ]
+        sources = [("Pixabay", lambda q, pv=prefer_vertical: pixabay.fetch_video_candidates(q, prefer_vertical=pv))]
+        if pexels:
+            sources.append(("Pexels", lambda q, pv=prefer_vertical: pexels.fetch_video_candidates(q, prefer_vertical=pv)))
+        sources.append(("Wikimedia Commons", lambda q, pv=prefer_vertical: wikimedia.fetch_video_candidates(q, prefer_vertical=pv)))
+        return sources
 
     def _photo_sources(prefer_vertical: bool):
-        return [
-            ("Pixabay", lambda q, pv=prefer_vertical: pixabay.fetch_photo_candidates(q, prefer_vertical=pv)),
-            ("Wikimedia Commons", lambda q, pv=prefer_vertical: wikimedia.fetch_photo_candidates(q, prefer_vertical=pv)),
-        ]
+        sources = [("Pixabay", lambda q, pv=prefer_vertical: pixabay.fetch_photo_candidates(q, prefer_vertical=pv))]
+        if pexels:
+            sources.append(("Pexels", lambda q, pv=prefer_vertical: pexels.fetch_photo_candidates(q, prefer_vertical=pv)))
+        sources.append(("Wikimedia Commons", lambda q, pv=prefer_vertical: wikimedia.fetch_photo_candidates(q, prefer_vertical=pv)))
+        return sources
 
     # Follow-eslatma — standart holatda O'CHIRILGAN (0), foydalanuvchi ongli ravishda
     # .env'da yoqishi kerak (masalan =5 — har 5-postda bir marta). Bu — "faqat joy
