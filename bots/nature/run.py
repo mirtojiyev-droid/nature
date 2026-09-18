@@ -52,7 +52,7 @@ from .places import PLACES
 from .state import get_current_theme, increment_and_get_post_count, mark_facet_used, pick_next_facet
 from shared.telegram_poster import TelegramPoster
 from shared.hashtags import format_hashtags
-from .topics import get_topic_pool
+from .topics import get_place_category, get_topic_pool
 from .wikimedia_fetcher import WikimediaFetcher
 
 logger = logging.getLogger(__name__)
@@ -193,7 +193,7 @@ def run_once(forced_facet_key: str | None = None) -> int:
         logger.info("Kunlik jadval bo'yicha qirra belgilandi: %s", facet["label"])
     else:
         facet_idx, facet = pick_next_facet(FACETS)
-    variants = build_query_variants(theme, facet)
+    variants = build_query_variants(theme, facet, fallback_category=get_place_category(theme))
     logger.info("Joriy mavzu: %s | Qirra: %s | Qidiruv variantlari: %s", theme, facet["label"], variants)
 
     # MUHIM (foydalanuvchi qarori): Pexels butunlay OLIB TASHLANDI — foydalanuvchi

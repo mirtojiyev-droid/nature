@@ -90,17 +90,25 @@ def _search_term(term: str, limit: int = 50, max_retries: int = 2) -> list[str]:
     return []
 
 
-def _fetch_fresh_pool() -> list[str]:
-    pool: set[str] = set()
+def _fetch_fresh_pool() -> dict[str, str]:
+    """Har bir joy nomini QAYSI SEARCH_TERM (kategoriya, masalan "mountain range",
+    "wetland") orqali topilganini ham saqlab qaytaradi — {joy_nomi: kategoriya}.
+    Bu kategoriya keyinroq run.py'da "umumiy manzarasi" qirrasi uchun (aniq joy
+    nomi bo'yicha Pixabay'da hech narsa topilmasa) TEMATIK JIHATDAN TO'G'RI zaxira
+    qidiruv so'zi sifatida ishlatiladi (masalan noyob "Khentii Mountains" nomi
+    o'rniga "mountain range" — bu haqiqatan ham o'sha joy haqida, umuman
+    aloqasiz umumiy so'z emas)."""
+    pool: dict[str, str] = {}
     for i, term in enumerate(SEARCH_TERMS):
         titles = _search_term(term)
-        pool.update(titles)
+        for title in titles:
+            pool.setdefault(title, term)  # birinchi topilgan kategoriya saqlanadi
         logger.info("'%s' bo'yicha %d ta joy topildi (jami havza: %d)", term, len(titles), len(pool))
         if i < len(SEARCH_TERMS) - 1:
             # Wikipedia'ni ketma-ket ko'p so'rov bilan band qilib, 429 (Too Many
             # Requests) xatosiga uchramaslik uchun har bir so'rov orasida kichik pauza.
             time.sleep(0.4)
-    return sorted(pool)
+    return pool
 
 
 def _load_cache() -> dict | None:
@@ -113,18 +121,44 @@ def _load_cache() -> dict | None:
         return None
 
 
+# Oxirgi marta yuklangan/yig'ilgan {joy_nomi: kategoriya} bog'lanishi — modul
+# xotirasida saqlanadi, get_place_category() shundan o'qiydi. get_topic_pool()
+# chaqirilishi shart (odatda har run_once() boshida chaqiriladi allaqachon).
+_last_category_map: dict[str, str] = {}
+
+
+def get_place_category(place_name: str) -> str | None:
+    """`place_name` (masalan "Khentii Mountains") qaysi qidiruv kategoriyasidan
+    (masalan "mountain range") topilganini qaytaradi — topilmasa (masalan
+    places.py'dagi qo'lda yozilgan seed joy bo'lsa) None. run.py buni "umumiy
+    manzarasi" qirrasi uchun tematik jihatdan to'g'ri zaxira qidiruv so'zi
+    sifatida ishlatadi (aniq, noyob joy nomi Pixabay'da topilmasa)."""
+    return _last_category_map.get(place_name)
+
+
 def get_topic_pool(seed_places: list[str] | None = None) -> list[str]:
     """Joylar havzasini qaytaradi. Agar keshlangan (va 1 haftadan yosh) bo'lsa, undan foydalanadi,
     aks holda Wikipedia'dan yangisini yig'ib, keshlaydi. Tarmoq ishlamasa yoki hech narsa
     topilmasa, eski kesh yoki seed (places.py) ro'yxat bilan davom etadi — bot hech qachon
     shu sababdan to'xtamasligi kerak."""
+    global _last_category_map
     seed = seed_places or []
 
     cache = _load_cache()
     if cache:
         age = time.time() - cache.get("fetched_at", 0)
-        if age < CACHE_MAX_AGE_SECONDS and cache.get("pool"):
-            pool = sorted(set(cache["pool"]) | set(seed))
+        cached_pool = cache.get("pool")
+        # MUHIM (eski kesh formati bilan moslik): avvalgi versiyada "pool" oddiy
+        # RO'YXAT edi (kategoriyasiz). Yangi versiyada bu {joy: kategoriya} DICT.
+        # Ikkalasini ham to'g'ri o'qiy olishimiz kerak (masalan eski keshli
+        # muhitdan yangi kodga o'tilganda xato bermasligi uchun).
+        if age < CACHE_MAX_AGE_SECONDS and cached_pool:
+            if isinstance(cached_pool, dict):
+                _last_category_map = cached_pool
+                pool = sorted(set(cached_pool.keys()) | set(seed))
+            else:
+                _last_category_map = {}
+                pool = sorted(set(cached_pool) | set(seed))
             logger.info("Joylar havzasi keshdan yuklandi: %d ta joy.", len(pool))
             return pool
 
@@ -134,9 +168,15 @@ def get_topic_pool(seed_places: list[str] | None = None) -> list[str]:
     if not fresh_pool:
         logger.warning("Wikipedia'dan hech narsa olinmadi, eski kesh yoki seed ro'yxat bilan davom etamiz.")
         if cache and cache.get("pool"):
-            return sorted(set(cache["pool"]) | set(seed))
+            cached_pool = cache["pool"]
+            if isinstance(cached_pool, dict):
+                _last_category_map = cached_pool
+                return sorted(set(cached_pool.keys()) | set(seed))
+            _last_category_map = {}
+            return sorted(set(cached_pool) | set(seed))
         return seed
 
+    _last_category_map = fresh_pool
     try:
         CACHE_FILE.write_text(
             json.dumps({"fetched_at": time.time(), "pool": fresh_pool}, ensure_ascii=False, indent=2),
@@ -145,4 +185,4 @@ def get_topic_pool(seed_places: list[str] | None = None) -> list[str]:
     except OSError as exc:
         logger.warning("Joylar havzasini keshga saqlab bo'lmadi: %s", exc)
 
-    return sorted(set(fresh_pool) | set(seed))
+    return sorted(set(fresh_pool.keys()) | set(seed))
