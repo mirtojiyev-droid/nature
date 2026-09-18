@@ -2,12 +2,12 @@
 Wikimedia Commons orqali qo'shimcha (uchinchi) bepul manba sifatida rasm va video qidiradi.
 Commons — dunyodagi eng katta ochiq litsenziyali (Creative Commons / Public Domain) media
 arxivi bo'lib, API kalit talab qilmaydi (butunlay bepul va ro'yxatdan o'tmasdan ishlatiladi).
-Pexels/Pixabay'da topilmagan noyob joylar (masalan kamroq mashhur sharsharalar, milliy
+Pixabay'da topilmagan noyob joylar (masalan kamroq mashhur sharsharalar, milliy
 bog'lar) ko'pincha aynan Commons'da topiladi, chunki u Wikipedia maqolalarida ishlatiladigan
 millionlab faylni o'z ichiga oladi.
 
 Muhim farq: Commons'dagi video fayllar ko'pincha VP9/webm yoki Theora/ogv formatida
-bo'ladi (Pexels/Pixabay kabi to'g'ridan-to'g'ri H.264 mp4 emas) — shuning uchun bu yerdan
+bo'ladi (Pixabay kabi to'g'ridan-to'g'ri H.264 mp4 emas) — shuning uchun bu yerdan
 kelgan videolar main.py'da music_mixer.prepare_video_for_posting orqali har doim
 Telegram-mos H.264 formatga qayta kodlanadi.
 """
@@ -82,11 +82,12 @@ def _search_commons(query: str, filetype: str, limit: int = 20) -> list[dict]:
 
 
 class WikimediaFetcher:
-    """Pexels/PixabayFetcher bilan bir xil interfeys: fetch_photo(query, prefer_vertical),
+    """PixabayFetcher bilan bir xil interfeys: fetch_photo(query, prefer_vertical),
     fetch_video(query, prefer_vertical). API kalit shart emas — doim faol manba sifatida
     ishlatilishi mumkin."""
 
-    def fetch_photo(self, query: str, prefer_vertical: bool = True) -> str | None:
+    def _find_matching_photos(self, query: str, prefer_vertical: bool) -> list[dict]:
+        """Ichki yordamchi — `fetch_photo` va `fetch_photo_candidates` uchun umumiy."""
         pages = _search_commons(query, "bitmap")
         candidates = []
         for page in pages:
@@ -108,12 +109,21 @@ class WikimediaFetcher:
             if is_vertical != prefer_vertical:
                 continue
             candidates.append({"url": url, "score": width * height})
+        return sorted(candidates, key=lambda c: c["score"], reverse=True)
 
+    def fetch_photo(self, query: str, prefer_vertical: bool = True) -> str | None:
+        candidates = self._find_matching_photos(query, prefer_vertical)
         chosen = _rank_and_pick(candidates, lambda c: c["score"])
         if not chosen:
             logger.info("Wikimedia Commons'da '%s' uchun mos rasm topilmadi", query)
             return None
         return chosen["url"]
+
+    def fetch_photo_candidates(self, query: str, prefer_vertical: bool = True, max_results: int = 4) -> list[str]:
+        """Bir nechta nomzod havolasini qaytaradi (pixabay_fetcher.py'dagi bir xil
+        nomdagi metodga qarang)."""
+        candidates = self._find_matching_photos(query, prefer_vertical)
+        return [c["url"] for c in candidates[:max_results]]
 
     def _find_matching_video_candidates(self, query: str, prefer_vertical: bool) -> list[dict]:
         """Ichki yordamchi — `fetch_video` va `fetch_video_candidates` uchun umumiy

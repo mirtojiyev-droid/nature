@@ -3,11 +3,11 @@ Topilgan videoni Telegram uchun eng mos formatga (H.264/AAC, mp4) keltiradi va, 
 music/ papkasida trek bo'lsa, fon musiqasi qo'shadi — ikkalasi ham bitta ffmpeg
 chaqiruvida bajariladi.
 
-Nega kodek normalizatsiyasi kerak: Pexels/Pixabay har doim to'g'ridan-to'g'ri H.264 mp4
+Nega kodek normalizatsiyasi kerak: Pixabay har doim to'g'ridan-to'g'ri H.264 mp4
 beradi, lekin Wikimedia Commons (wikimedia_fetcher.py) ko'pincha VP9/webm yoki Theora/ogv
 formatida fayl beradi — bu formatlar barcha Telegram mijozlarida ishonchli ko'rinavermaydi.
 Shuning uchun manba H.264 bo'lmasa, ffmpeg orqali qayta kodlanadi. Manba allaqachon H.264
-bo'lsa VA allaqachon TARGET_MAX_DIMENSION (4K) dan oshmasa (odatiy holat — Pexels/Pixabay),
+bo'lsa VA allaqachon TARGET_MAX_DIMENSION (4K) dan oshmasa (odatiy holat — Pixabay),
 video striim shunchaki nusxalanadi (tezroq, sifat yo'qolmaydi).
 
 SIFAT vs TELEGRAM HAJM CHEGARASI: fetch bosqichida (media_fetcher.py/pixabay_fetcher.py/

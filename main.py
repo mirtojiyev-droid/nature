@@ -8,31 +8,36 @@ alohida serverga pul to'lash shart emas.
 
 Har bir bot (`bots/nature`, `bots/crypto`, `bots/football`) TO'LIQ mustaqil:
 o'zining bot tokeni, kanal ID'si va sozlamalariga ega (.env'da alohida prefikslar
-bilan). Bittasi xato bersa ham (masalan Binance vaqtincha ishlamasa), boshqalari
-ta'sirlanmaydi — har bir "job" o'zining try/except ichida ishlaydi.
+bilan). Bittasi xato bersa ham (masalan CoinGecko vaqtincha rate-limit qilsa),
+boshqalari ta'sirlanmaydi — har bir "job" o'zining try/except ichida ishlaydi.
 
-MUHIM (ip-oqim/threading va operativ xotira haqide): har bir bot o'z ALOHIDA
+MUHIM (ip-oqim/threading va operativ xotira haqida): har bir bot o'z ALOHIDA
 ip-oqimida (thread) ishga tushiriladi, bittasi (masalan tabiat boti ffmpeg bilan)
 bir necha daqiqa band bo'lishi mumkin, lekin bu ikkinchisini (masalan kripto botini,
 aynan shu daqiqada post qilishi kerak bo'lgan) KECHIKTIRMAYDI.
 
-LEKIN: agar bir nechta bot BIR VAQTDA ishlasa (masalan hub ishga tushgan zahoti, yoki
-ikkita botning jadvali tasodifan bir xil daqiqaga to'g'ri kelib qolsa), ularning
-operativ xotira sarfi QO'SHILIB ketadi — bu, ayniqsa Render/Railway kabi platformalarning
-arzon tariflarida (odatda 512MB-1GB), "out of memory" xatosiga olib kelishi mumkin
-(ffmpeg 4K video qayta kodlashda o'zi bir necha yuz
-MB talab qilishi mumkin). Shuning uchun `HUB_MAX_CONCURRENT_JOBS` (.env) orqali BIR
-VAQTDA nechta bot ishlashi mumkinligini cheklaymiz:
-  - Standart (va kam xotirali serverlar uchun tavsiya etiladigan) qiymat: 1 — ya'ni
-    botlar HAR DOIM birin-ketin ishlaydi, hech qachon bir vaqtda ishlamaydi (xavfsiz,
-    lekin bittasi band bo'lsa boshqasi biroz kutadi).
-  - Agar serveringizda operativ xotira yetarli bo'lsa (masalan 2GB+), buni 2 yoki 3'ga
-    oshirib, botlarning bir-birini kutmasdan parallel ishlashiga ruxsat berishingiz
-    mumkin (tezroq, lekin xotira cho'qqisi balandroq).
-Bundan tashqari, har bir bot uchun alohida qulf (Lock) ham bor — shu bot allaqachon
-ishlab turgan bo'lsa (masalan interval juda qisqa qilib qo'yilsa-yu, oldingi ishga
-tushirish hali tugamagan bo'lsa), shu bot safar shunchaki o'tkazib yuboriladi (o'zining
-ikkita nusxasi bir vaqtda ishlab, bir xil faylni ustma-ust yozib qo'ymasligi uchun).
+LEKIN: agar bir nechta bot BIR VAQTDA ishlasa, ularning operativ xotira sarfi
+QO'SHILIB ketadi — bu, ayniqsa Render/Railway kabi platformalarning arzon
+tariflarida (odatda 512MB-1GB), "out of memory" xatosiga olib kelishi mumkin
+(ffmpeg 4K video qayta kodlashda o'zi bir necha yuz MB talab qilishi mumkin).
+Shuning uchun `HUB_MAX_CONCURRENT_JOBS` (.env) orqali kripto/futbol BIR VAQTDA
+nechta bo'lib ishlashi mumkinligini cheklaymiz (standart: 1 — birin-ketin).
+
+MUHIM (haqiqiy voqeada aniqlangan va tuzatilgan xato): tabiat boti bu umumiy
+cheklovga KIRMAYDI — u O'ZINING alohida ruxsatiga (semaphore) ega, hech qachon
+kripto/futbolni kutmaydi. Sabab: tabiat botining kunlik jadvali ANIQ VAQTGA
+bog'liq (masalan 06:00 — quyosh chiqishi), kripto esa CoinGecko rate-limit
+tufayli 20-30+ daqiqa davom etishi mumkin — agar bitta umumiy ruxsat bo'lganida,
+tabiat boti shu vaqt ichida jim kutib, jadvaldagi vaqtini o'tkazib yuborishi
+mumkin edi (bu logda ham ko'rinmasdi, chunki "ishga tushmoqda" logi ruxsat
+OLINGANDAN keyin chiqadi). Shuning uchun tabiat — har doim DARHOL, hech kimni
+kutmasdan ishga tushadi; faqat kripto/futbol o'zaro navbatlashadi.
+
+Bundan tashqari, har bir bot uchun alohida qulf (fcntl.flock, jarayonlar ORASIDA
+ham ishlaydigan) bor — shu bot allaqachon ishlab turgan bo'lsa (masalan Render
+qayta deploy qilib, eski/yangi jarayon bir zumga bir vaqtda ishlab tursa), shu bot
+safar shunchaki o'tkazib yuboriladi (ikkita nusxa bir xil faylni ustma-ust yozib
+qo'ymasligi uchun).
 
 Ishga tushirish: `python main.py` (bu papkadan, hub root'idan). Doimiy (24/7) ishlashi
 uchun `bot-hub.service` (systemd) orqali joylang — README.md'ga qarang.

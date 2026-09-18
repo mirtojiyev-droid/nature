@@ -14,6 +14,7 @@ from PIL import Image, ImageDraw
 
 from shared.canvas import diagonal_gradient, draw_soft_glow_circle, paste_soft_shadow
 from shared.fonts import get_font
+from .captions import local_date_time
 
 logger = logging.getLogger(__name__)
 
@@ -227,9 +228,10 @@ def build_result_card_image(match: dict) -> bytes:
 
 
 def build_fixture_card_image(match: dict) -> bytes:
-    time_str = f"{match['strTime'][:5]} UTC" if match.get("strTime") else "Vaqt aniq emas"
+    local_date, local_time = local_date_time(match)
+    time_str = local_time if match.get("strTime") else "Vaqt aniq emas"
     return _draw_match_card(
-        league_meta=match["leagueMeta"], date_str=match["dateEvent"],
+        league_meta=match["leagueMeta"], date_str=local_date,
         home_name=match["strHomeTeam"], away_name=match["strAwayTeam"],
         home_badge_url=match.get("strHomeTeamBadge"), away_badge_url=match.get("strAwayTeamBadge"),
         center_type="vs", time_str=time_str,

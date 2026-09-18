@@ -1,26 +1,33 @@
 """
-Tabiat kanali uchun avtomatik post qiluvchi bot — "4 soatlik mavzu" rejimi.
+Tabiat kanali uchun avtomatik post qiluvchi bot.
 
-Har ishga tushganda (30 daqiqada bir):
+Standart holatda KUNLIK, kategoriya-vaqtga bog'langan jadval bo'yicha ishlaydi (kuniga
+12 marta, har biri aniq vaqtda va aniq "qirra" — sharshara, sohil, quyosh botishi va
+h.k. — bilan; bots/nature/schedule_config.py'ga qarang, main.py orqali chaqiriladi).
+Eski (tasodifiy, 30 daqiqalik interval) rejimga `.env`dagi NATURE_USE_DAILY_SCHEDULE=false
+orqali qaytish mumkin.
+
+Har bir ishga tushirishda:
   1. Joriy 4 soatlik oynaning mavzusini (joyni) aniqlaydi — oyna davomida bir xil joy
-     qoladi (shu oynada 8 marta, har biri turli qirra bilan post qilinadi), oyna
-     tugagach yangisi tanlanadi (topics.py orqali Wikipedia'ning keng qidiruvidan
-     avtomatik topilgan minglab joy ichidan, places.py'dagi qo'lda tuzilgan ro'yxat esa
-     zaxira/seed sifatida).
-  2. Joriy oynada hali ishlatilmagan bitta "qirra"ni tanlaydi (facets.py: sharshara,
-     sohil, tog', quyosh botishi, havodan ko'rinishi va h.k. — mavzuning turli go'zal
-     qirralari).
-  3. Pexels'dan shu joy + qirra bo'yicha avval VIDEO (asosiy kontent, 4K'gacha), so'ng
-     RASM qidiradi (Pexels -> Pixabay -> Wikimedia Commons ketma-ketligida).
-  4. Caption tayyorlab (FAQAT joy nomi + qirra + hashteglar — pastga qarang), kanalga
-     videoni va rasmni (ikkalasini ham, topilsa) joylaydi.
-  5. Qirrani "ishlatildi" deb belgilaydi.
+     qoladi (topics.py orqali Wikipedia'ning keng qidiruvidan avtomatik topilgan
+     minglab joy ichidan; places.py'dagi qo'lda tuzilgan ro'yxat zaxira/seed sifatida).
+  2. Qirrani aniqlaydi — kunlik jadval rejimida `forced_facet_key` orqali BELGILAB
+     beriladi (masalan "06:00 -> sunrise"), eski rejimda esa navbat bilan tasodifiy
+     tanlanadi (facets.py).
+  3. FAQAT Pixabay'dan (foydalanuvchi qarori — Pexels butunlay olib tashlangan) shu
+     joy + qirra bo'yicha avval VIDEO, so'ng RASM qidiradi (Pixabay -> Wikimedia
+     Commons zaxira sifatida). Video uchun bir nechta nomzod ketma-ket sinaladi —
+     birinchisi yuklab bo'lmasa yoki sifat nazoratidan (bo'sh/qora kadr, ffmpeg qayta
+     ishlash) o'tmasa, keyingisiga o'tiladi (_find_and_prepare_video()).
+  4. Caption tayyorlab (FAQAT joy nomi + hashteglar — qirra caption'da UMUMAN
+     ko'rinmaydi, faqat qidiruv/hashteg uchun ICHKI ishlatiladi), video/rasmga "pro"
+     brendlash (joy nomi + kanal belgisi) qo'shib, kanalga joylaydi.
+  5. Qirrani "ishlatildi" deb belgilaydi (eski, tasodifiy rejim uchun muhim).
 
-MUHIM (ataylab olib tashlangan xususiyat): avval caption'da Wikipedia'dan olingan
-qisqacha ma'lumot (izoh) ham bo'lardi. Bu olib tashlandi — chunki ba'zan (masalan joy
-nomi bilan bir xil nomdagi kino/qo'shiq bo'lsa) noto'g'ri ma'lumot berish xavfi bor edi.
-Endi caption FAQAT joy nomi, qirra va hashteglar — hech qanday qo'shimcha matn yo'q,
-demak bunday xato ham UMUMAN mumkin emas.
+MUHIM (ataylab olib tashlangan xususiyat): caption'da Wikipedia'dan olingan qisqacha
+ma'lumot (izoh) YO'Q — bunday matn ba'zan (masalan joy nomi bilan bir xil nomdagi
+kino/qo'shiq bo'lsa) noto'g'ri ma'lumot berish xavfini tug'dirar edi. Caption FAQAT
+joy nomi va hashteglar — hech qanday qo'shimcha matn yo'q.
 
 Bu modul mustaqil ishga tushirilishi ham mumkin (`python -m bots.nature.run`, hub papkasidan),
 lekin odatiy holatda hub'ning `main.py`'si buni scheduler orqali chaqiradi (README.md'ga qarang).
@@ -74,30 +81,12 @@ def build_caption(theme: str, facet: dict, include_follow_reminder: bool = False
     return header + reminder + footer
 
 
-def _fetch_with_fallback(sources: list[tuple[str, callable]], variants: list[str], kind: str) -> tuple[str, str] | None:
-    """Bir nechta qidiruv so'zi (eng aniqdan eng umumiyga) va bir nechta manba (Pexels,
-    so'ng Pixabay) bo'yicha ketma-ket urinib ko'radi — birinchi topilgan natijani qaytaradi.
-    Bu Pexels/Pixabay video kutubxonasi kichik bo'lgani uchun juda spetsifik so'rovlarda
-    ko'pincha hech narsa topilmasligi muammosini hal qiladi.
-
-    Qaytaradi: (manba_nomi, url) yoki hech narsa topilmasa None."""
-    for query in variants:
-        for name, fetch_fn in sources:
-            url = fetch_fn(query)
-            if url:
-                logger.info("%s topildi — manba: %s, so'rov: '%s'", kind, name, query)
-                return name, url
-    logger.info("%s uchun hech qanday manba/so'rov birikmasida natija topilmadi.", kind)
-    return None
-
-
 def _find_and_prepare_video(sources: list[tuple[str, callable]], variants: list[str],
                              tmp_path: Path, theme: str) -> Path | None:
-    """`_fetch_with_fallback`dan farqli — BITTA URL bilan to'xtamaydi. Har bir manba/
-    so'rov birikmasi uchun BIR NECHTA nomzod (fetch_video_candidates) oladi, va
-    har birini KETMA-KET: yuklab olish -> bo'sh/qora kadr tekshiruvi -> ffmpeg orqali
-    Telegram uchun mos formatga o'tkazish (+ topilsa musiqa, + brendlash) bosqichlaridan
-    o'tkazadi. Birinchi nomzod istalgan bosqichda muvaffaqiyatsiz bo'lsa (yuklanmadi,
+    """Har bir manba/so'rov birikmasi uchun BIR NECHTA nomzod (fetch_video_candidates)
+    oladi, va har birini KETMA-KET: yuklab olish -> bo'sh/qora kadr tekshiruvi ->
+    ffmpeg orqali Telegram uchun mos formatga o'tkazish (+ topilsa musiqa, +
+    brendlash) bosqichlaridan o'tkazadi. Birinchi nomzod istalgan bosqichda muvaffaqiyatsiz bo'lsa (yuklanmadi,
     bo'sh ekan, yoki ffmpeg qayta ishlay olmadi), RO'YXATDAGI KEYINGI nomzodga o'tadi —
     faqat BITTA muammoli fayl tufayli butun post video'siz (faqat rasm bilan)
     qolib ketmasligi uchun (foydalanuvchi so'rovi).
@@ -132,6 +121,32 @@ def _find_and_prepare_video(sources: list[tuple[str, callable]], variants: list[
                     source_name, query,
                 )
     logger.info("Hech qanday video nomzodi sifat nazoratidan o'ta olmadi (%d ta nomzod sinaldi).", attempt)
+    return None
+
+
+def _find_and_prepare_photo(sources: list[tuple[str, callable]], variants: list[str],
+                             theme: str, brand_label: str) -> bytes | None:
+    """`_find_and_prepare_video`bilan bir xil mantiq, faqat rasm uchun: har bir manba/
+    so'rov birikmasidan bir nechta nomzod olib, har birini KETMA-KET: xotiraga yuklash
+    -> bo'sh/bir xil rangli tekshiruvi -> brendlash overlay chizish bosqichlaridan
+    o'tkazadi. Birinchi nomzod muvaffaqiyatsiz bo'lsa, keyingisiga o'tadi. Muvaffaqiyatli
+    bo'lsa, Telegram'ga joylashga tayyor (overlay bilan) rasm baytlarini qaytaradi."""
+    for query in variants:
+        for source_name, fetch_candidates_fn in sources:
+            candidate_urls = fetch_candidates_fn(query)
+            for photo_url in candidate_urls:
+                photo_bytes = download_bytes(photo_url)
+                if not photo_bytes:
+                    logger.warning("'%s' manbasidan rasm (so'rov: '%s') yuklab olinmadi - keyingi nomzod sinaladi.", source_name, query)
+                    continue
+                if is_blank_image_bytes(photo_bytes):
+                    logger.warning("'%s' manbasidan rasm (so'rov: '%s') bo'sh/bir xil rangdan iborat - keyingi nomzod sinaladi.", source_name, query)
+                    continue
+                overlaid = add_branding_overlay(photo_bytes, theme, brand_label)
+                result = overlaid or photo_bytes
+                logger.info("Rasm topildi va tayyorlandi — manba: %s, so'rov: '%s'.", source_name, query)
+                return result
+    logger.info("Hech qanday rasm nomzodi sifat nazoratidan o'ta olmadi.")
     return None
 
 
@@ -203,8 +218,8 @@ def run_once(forced_facet_key: str | None = None) -> int:
 
     def _photo_sources(prefer_vertical: bool):
         return [
-            ("Pixabay", lambda q, pv=prefer_vertical: pixabay.fetch_photo(q, prefer_vertical=pv)),
-            ("Wikimedia Commons", lambda q, pv=prefer_vertical: wikimedia.fetch_photo(q, prefer_vertical=pv)),
+            ("Pixabay", lambda q, pv=prefer_vertical: pixabay.fetch_photo_candidates(q, prefer_vertical=pv)),
+            ("Wikimedia Commons", lambda q, pv=prefer_vertical: wikimedia.fetch_photo_candidates(q, prefer_vertical=pv)),
         ]
 
     # Follow-eslatma — standart holatda O'CHIRILGAN (0), foydalanuvchi ongli ravishda
@@ -234,7 +249,7 @@ def run_once(forced_facet_key: str | None = None) -> int:
     # ulanmagan, chunki bunday kutubxonalar bepul API taklif qilmaydi va litsenziyasi
     # faqat qo'lda yuklab olishga ruxsat beradi).
     #
-    # Mos lokal video topilmasa, avtomatik bepul manbalarga (Pexels/Pixabay/Wikimedia
+    # Mos lokal video topilmasa, avtomatik bepul manbalarga (Pixabay/Wikimedia
     # Commons) o'tiladi: avval telefon ekraniga to'liq mos vertikal (portret, "short"
     # formatiga o'xshash) video qidiriladi — shunday videolar ko'proq topilishi/joylanishi
     # uchun. Vertikal hech narsa topilmasa, gorizontal (landscape, "uzun" format) bilan
@@ -278,37 +293,14 @@ def run_once(forced_facet_key: str | None = None) -> int:
 
     photo_posted = False
     if post_photo_too:
-        photo_result = _fetch_with_fallback(_photo_sources(True), variants, "Rasm (vertikal/telefon uchun)")
-        if not photo_result:
-            photo_result = _fetch_with_fallback(_photo_sources(False), variants, "Rasm (gorizontal)")
-        if photo_result:
-            source_name, photo_url = photo_result
-            # Video bilan bir xil "pro" brendlash uslubini (joy nomi + kanal
-            # belgisi, yarim shaffof fon) rasmga ham qo'shamiz — buning uchun
-            # rasm avval xotiraga yuklanishi kerak (post_photo kabi to'g'ridan-to'g'ri
-            # URL orqali joylash overlay chizishga imkon bermaydi).
-            photo_bytes = download_bytes(photo_url)
-            blank_detected = False
-            if photo_bytes and is_blank_image_bytes(photo_bytes):
-                # Video bilan bir xil sabab: qora/bir xil rangli "buzuq" rasm hech
-                # qachon joylanmasligi kerak — MUHIM: bu holatda pastdagi "xotiraga
-                # yuklab bo'lmadi" zaxira yo'liga ham tushmasligi kerak, aks holda
-                # xuddi shu bo'sh rasm URL orqali baribir joylanib qolardi.
-                logger.warning("'%s' manbasidan kelgan rasm bo'sh/bir xil rangdan iborat deb aniqlandi - joylanmaydi.", source_name)
-                photo_bytes = None
-                blank_detected = True
-            overlaid = add_branding_overlay(photo_bytes, theme, os.getenv("NATURE_BRAND_LABEL", "Nature Channel")) if photo_bytes else None
-            if overlaid:
-                photo_posted = poster.post_photo_bytes(overlaid, caption)
-            elif photo_bytes:
-                photo_posted = poster.post_photo_bytes(photo_bytes, caption)
-            elif not blank_detected:
-                # Xotiraga yuklab bo'lmadi (tarmoq xatoligi va h.k.) - to'g'ridan-to'g'ri
-                # URL orqali joylashga urinamiz (overlay'siz, lekin postsiz qolgandan
-                # yaxshi). Bo'sh deb ANIQLANGAN holatda esa bu yo'l ISHLATILMAYDI.
-                photo_posted = poster.post_photo(photo_url, caption)
-            if not photo_posted:
-                logger.error("'%s' (%s) uchun rasmni joylashda xatolik.", theme, facet["label"])
+        brand_label = os.getenv("NATURE_BRAND_LABEL", "Nature Channel")
+        photo_bytes = _find_and_prepare_photo(_photo_sources(True), variants, theme, brand_label)
+        if not photo_bytes:
+            photo_bytes = _find_and_prepare_photo(_photo_sources(False), variants, theme, brand_label)
+        if photo_bytes:
+            photo_posted = poster.post_photo_bytes(photo_bytes, caption)
+        if not photo_posted:
+            logger.error("'%s' (%s) uchun rasmni joylashda xatolik.", theme, facet["label"])
 
     if video_posted or photo_posted:
         mark_facet_used(facet_idx)

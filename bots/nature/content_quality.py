@@ -1,5 +1,5 @@
 """
-Ba'zan stock-kutubxonalardan (Pixabay/Pexels) yuklab olingan fayl texnik jihatdan
+Ba'zan stock-kutubxonadan (Pixabay) yuklab olingan fayl texnik jihatdan
 "buzuq" bo'lishi mumkin — masalan butunlay qora ekran, yoki bir xil rangdan iborat
 placeholder kadr. Bunday fayl o'lcham/format jihatidan barcha filtrlardan muvaffaqiyatli
 o'tadi (chunki piksel soni katta bo'lishi mumkin), lekin ko'rinishda mazmunsiz.

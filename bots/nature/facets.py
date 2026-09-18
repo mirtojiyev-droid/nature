@@ -1,7 +1,7 @@
 """
 Bitta (4 soatlik oynadagi) mavzuning (joyning) turli "go'zal go'shalari" — oyna davomida
 bir xil joy haqida bir necha xil qirradan post qilish uchun. Har birida: caption'da
-KO'RINMAYDIGAN (faqat Pexels/Pixabay qidiruvi uchun ishlatiladigan) inglizcha so'z, va
+KO'RINMAYDIGAN (faqat Pixabay qidiruvi uchun ishlatiladigan) inglizcha so'z, va
 shu qirraga xos, qidiruvda kuchli hashteglar ro'yxati.
 
 MUHIM (foydalanuvchi so'rovi bilan o'zgartirilgan): avval caption'da qirra nomi ham
@@ -55,7 +55,7 @@ CHANNEL_HASHTAGS = ["Nature", "naturephotography"]
 
 
 def build_query(base_place: str, facet: dict) -> str:
-    """Joy nomi va qirra bo'yicha Pexels uchun qidiruv so'zini yasaydi."""
+    """Joy nomi va qirra bo'yicha Pixabay uchun qidiruv so'zini yasaydi."""
     if facet["suffix"]:
         return f"{base_place} {facet['suffix']}"
     return base_place

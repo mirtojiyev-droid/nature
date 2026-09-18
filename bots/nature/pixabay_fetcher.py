@@ -1,9 +1,12 @@
 """
 Pixabay API orqali berilgan query bo'yicha tabiat rasm yoki videosini topib beradi.
-Pexels'ga qo'shimcha (zaxira) manba sifatida ishlatiladi — ba'zan Pexels'da topilmagan
-narsa Pixabay'da topilishi mumkin, shu bilan umumiy topilish ehtimoli oshadi.
+Tabiat botining ASOSIY (yagona avtomatik) manbasi — foydalanuvchi Pexels bilan
+Pixabay'ni qo'lda solishtirib, Pixabay'da vizual jihatdan ancha chiroyli/e'tiborni
+tortadigan kontent ko'proq ekanini aniqlagach, Pexels butunlay olib tashlangan.
+Wikimedia Commons — kalitsiz, har doim mavjud — oxirgi zaxira manba sifatida qoladi.
 Bepul, litsenziyasi ochiq: https://pixabay.com/service/terms/
-API kalit: https://pixabay.com/api/docs/ (bepul, ro'yxatdan o'tib olinadi)
+API kalit: https://pixabay.com/api/docs/ (bepul, ro'yxatdan o'tib olinadi — SHART,
+run.py'dagi run_once() shu kalitsiz ishlamaydi).
 """
 import logging
 import random
@@ -35,7 +38,7 @@ def _filter_by_relevance(hits: list, query: str) -> list:
     so'rovga umuman aloqasi yo'q kontent (masalan "ocean" so'ralganda o'rmon videosi)
     sizib o'tib ketardi. Endi mos kelmasa, BO'SH ro'yxat qaytariladi — chaqiruvchi
     (run.py'dagi _fetch_with_fallback) bu holatda avtomatik ravishda soddaroq so'rov
-    variantiga yoki keyingi manbaga (Pexels/Wikimedia) o'tadi — bu noto'g'ri
+    variantiga yoki keyingi manbaga (Wikimedia) o'tadi — bu noto'g'ri
     mazmundagi post joylashdan ANCHA yaxshi."""
     query_words = _keywords(query)
     if not query_words:
@@ -95,49 +98,57 @@ class PixabayFetcher:
     def __init__(self, api_key: str):
         self.api_key = api_key
 
-    def fetch_photo(self, query: str, prefer_vertical: bool = True) -> str | None:
-        """Pixabay rasm API'si `orientation` parametrini qo'llab-quvvatlaydi, shuning uchun
-        vertikal/gorizontal so'rovni to'g'ridan-to'g'ri berish mumkin. Natijalar avval
-        so'rov so'zlari bilan `tags` mos kelishi bo'yicha filtrlanadi (mavzuga aloqasi
-        yo'q natijalarni chetlab o'tish uchun), so'ng MIN_PHOTO_DIMENSION'dan past
-        o'lchamdagilar butunlay chiqarib tashlanadi, va qolganlar orasidan eng yuqori
-        o'lchamlisi (sifatlisi) tanlanadi. `fullHDURL` mavjud bo'lsa (ba'zi hisoblarda
-        Pixabay shuni beradi — 1920px+), u ishlatiladi; bo'lmasa `largeImageURL`."""
+    def _find_matching_photos(self, query: str, prefer_vertical: bool) -> list[dict]:
+        """Ichki yordamchi — `fetch_photo` va `fetch_photo_candidates` uchun umumiy."""
         orientation = "vertical" if prefer_vertical else "horizontal"
         try:
             resp = requests.get(
                 PIXABAY_PHOTO_URL,
                 params={
-                    "key": self.api_key,
-                    "q": query,
-                    "image_type": "photo",
-                    "orientation": orientation,
-                    "per_page": 20,
-                    "safesearch": "true",
+                    "key": self.api_key, "q": query, "image_type": "photo",
+                    "orientation": orientation, "per_page": 20, "safesearch": "true",
                 },
                 timeout=20,
             )
             resp.raise_for_status()
             hits = resp.json().get("hits", [])
-            if not hits:
-                logger.info("Pixabay'da '%s' (%s) uchun rasm topilmadi", query, orientation)
-                return None
-            relevant = _filter_by_relevance(hits, query)
-            good = [
-                h for h in relevant
-                if min(h.get("imageWidth") or 0, h.get("imageHeight") or 0) >= MIN_PHOTO_DIMENSION
-            ]
-            if not good:
-                logger.info(
-                    "Pixabay'da '%s' (%s) uchun %dpx+ sifatli/mos rasm topilmadi",
-                    query, orientation, MIN_PHOTO_DIMENSION,
-                )
-                return None
-            chosen = _rank_and_pick(good, lambda h: (h.get("imageWidth") or 0) * (h.get("imageHeight") or 0))
-            return chosen.get("fullHDURL") or chosen.get("largeImageURL")
         except requests.RequestException as exc:
             logger.warning("Pixabay rasm so'rovida xatolik (%s): %s", query, exc)
+            return []
+
+        if not hits:
+            logger.info("Pixabay'da '%s' (%s) uchun rasm topilmadi", query, orientation)
+            return []
+        relevant = _filter_by_relevance(hits, query)
+        good = [
+            h for h in relevant
+            if min(h.get("imageWidth") or 0, h.get("imageHeight") or 0) >= MIN_PHOTO_DIMENSION
+        ]
+        if not good:
+            logger.info(
+                "Pixabay'da '%s' (%s) uchun %dpx+ sifatli/mos rasm topilmadi",
+                query, orientation, MIN_PHOTO_DIMENSION,
+            )
+        return sorted(good, key=lambda h: (h.get("imageWidth") or 0) * (h.get("imageHeight") or 0), reverse=True)
+
+    def fetch_photo(self, query: str, prefer_vertical: bool = True) -> str | None:
+        """Pixabay rasm API'si `orientation` parametrini qo'llab-quvvatlaydi, shuning uchun
+        vertikal/gorizontal so'rovni to'g'ridan-to'g'ri berish mumkin. `fullHDURL` mavjud
+        bo'lsa (ba'zi hisoblarda Pixabay shuni beradi — 1920px+), u ishlatiladi; bo'lmasa
+        `largeImageURL`. Bir nechta nomzod kerak bo'lsa, `fetch_photo_candidates()`ga
+        qarang."""
+        good = self._find_matching_photos(query, prefer_vertical)
+        if not good:
             return None
+        chosen = _rank_and_pick(good, lambda h: (h.get("imageWidth") or 0) * (h.get("imageHeight") or 0))
+        return chosen.get("fullHDURL") or chosen.get("largeImageURL")
+
+    def fetch_photo_candidates(self, query: str, prefer_vertical: bool = True, max_results: int = 4) -> list[str]:
+        """Bir nechta nomzod havolasini (eng yaxshisidan boshlab) qaytaradi — video
+        uchun `fetch_video_candidates`dagi bir xil sababga ko'ra (birinchi nomzod
+        yuklab bo'lmasa yoki buzuq/bo'sh chiqsa, keyingisini sinash uchun)."""
+        good = self._find_matching_photos(query, prefer_vertical)
+        return [h.get("fullHDURL") or h.get("largeImageURL") for h in good[:max_results]]
 
     def _find_matching_video_files(self, query: str, prefer_vertical: bool) -> list[dict]:
         """Ichki yordamchi — so'rovga mos, sifat talablariga javob beradigan barcha
