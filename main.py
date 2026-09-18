@@ -190,10 +190,6 @@ def job(name: str, fn) -> None:
         lock_file.close()
         return
     try:
-        # Ishga tushirish DARHOL (fn() hali navbatda kutayotgan bo'lsa ham) qayd etiladi
-        # — schedule kutubxonasining o'zi ham "last_run"ni aynan shu daqiqada (chaqiruv
-        # boshida, tugashini kutmasdan) belgilaydi, shu bilan izchil turish uchun.
-        _save_last_run_time(name)
         # Har bir bot O'ZIGA mos semaforni ishlatadi — tabiat boti ALOHIDA (hech qachon
         # kripto/futbolni kutmaydi), kripto/futbol esa umumiy semaforni bo'lishadi
         # (HUB_MAX_CONCURRENT_JOBS orqali cheklanadi). Batafsil sabab uchun yuqoridagi
@@ -208,6 +204,28 @@ def job(name: str, fn) -> None:
         try:
             logger.info("[%s] ishga tushmoqda...", name)
             fn()
+            # MUHIM (haqiqiy voqeada aniqlangan va tuzatilgan xato — "tabiat boti bir
+            # marta ishga tushib, qaytib ishga tushmadi"): AVVAL bu qator try blokining
+            # ENG BOSHIDA, fn() chaqirilishidan OLDIN turardi — "fn() hali navbatda
+            # kutayotgan bo'lsa ham darhol qayd etiladi" degan (o'zi to'g'ri) niyat
+            # bilan. LEKIN buning YOMON tomoni bor edi: agar jarayon fn() ICHIDA
+            # (masalan tabiat botining og'ir ffmpeg/Wikipedia bosqichida, xotira
+            # yetishmasligi tufayli Render tomonidan MAJBURAN o'chirilsa — bu esa
+            # tabiat boti endi kripto/futbolni kutmagani uchun ular bilan bir vaqtda
+            # ishlab, umumiy xotira sarfini oshirib yuborishi orqali yanada
+            # ehtimolroq bo'lib qolgan edi), bu "ishga tushirilgan vaqt" ALLAQACHON
+            # yozilgan bo'lardi — garchi HECH NARSA post qilinmagan, hatto fn() hali
+            # bajarilayotgan bo'lsa ham. Jarayon qayta ishga tushganda, yuqoridagi
+            # "o'tkazib yuborilgan postni tiklash" mexanizmi buni "yaqinda muvaffaqiyatli
+            # ishlagan" deb noto'g'ri xulosa qilib, QAYTA URINMASDAN navbatdagi
+            # jadval vaqtigacha jim kutardi — agar xuddi shu vaziyat (masalan
+            # kripto bilan bir vaqtga to'g'ri kelish) takrorlansa, bot HECH QACHON
+            # muvaffaqiyatli yakunlay olmay qolishi mumkin edi. Endi bu qator FAQAT
+            # fn() TO'LIQ, MUVAFFAQIYATLI yakunlangandan KEYIN yoziladi — shuning
+            # uchun yarim-bajarilgan/kesilgan urinish hech qachon "muvaffaqiyatli
+            # o'tgan" deb noto'g'ri hisoblanmaydi, va qayta ishga tushganda albatta
+            # qaytadan (to'g'ri) urinib ko'riladi.
+            _save_last_run_time(name)
         finally:
             sem.release()
     except Exception:  # noqa: BLE001 - hub hech qachon shu sababdan to'xtamasligi kerak
