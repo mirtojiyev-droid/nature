@@ -14,15 +14,28 @@ Har bir ishga tushirishda:
   2. Qirrani aniqlaydi — kunlik jadval rejimida `forced_facet_key` orqali BELGILAB
      beriladi (masalan "06:00 -> sunrise"), eski rejimda esa navbat bilan tasodifiy
      tanlanadi (facets.py).
-  3. FAQAT Pixabay'dan (foydalanuvchi qarori — Pexels butunlay olib tashlangan) shu
-     joy + qirra bo'yicha avval VIDEO, so'ng RASM qidiradi (Pixabay -> Wikimedia
-     Commons zaxira sifatida). Video uchun bir nechta nomzod ketma-ket sinaladi —
-     birinchisi yuklab bo'lmasa yoki sifat nazoratidan (bo'sh/qora kadr, ffmpeg qayta
-     ishlash) o'tmasa, keyingisiga o'tiladi (_find_and_prepare_video()).
+  3. `.env`'da (config.py orqali) sozlanadigan MANBALAR TARTIBI bo'yicha (standart:
+     Pixabay -> Pexels (kalit bo'lsa) -> Wikimedia Commons — NATURE_SOURCE_ORDER
+     bilan o'zgartiriladi) shu joy + qirra bo'yicha VIDEO va/yoki RASM qidiradi
+     (NATURE_MEDIA_MODE: "video_first" (standart), "video_only" yoki "photo_only").
+     Video uchun bir nechta nomzod ketma-ket sinaladi — birinchisi yuklab bo'lmasa
+     yoki sifat nazoratidan (bo'sh/qora kadr, ffmpeg qayta ishlash) o'tmasa,
+     keyingisiga o'tiladi (_find_and_prepare_video()). Sifat chegarasi ham
+     bosqichma-bosqich pasayadi (NATURE_MIN_VIDEO_PX/NATURE_MIN_PHOTO_PX — standart
+     1080p->720p va 1600px->1080px): eng yuqori darajada hech narsa topilmasa,
+     butunlay rad etish o'rniga pastroq darajada qayta qidiriladi. Vertikal video
+     topilmasa (NATURE_ALLOW_ORIENTATION_FALLBACK yoqilgan bo'lsa, standart), mos
+     gorizontal video ham qabul qilinib, ffmpeg orqali markazdan kesib (crop)
+     vertikal formatga keltiriladi.
   4. Caption tayyorlab (FAQAT joy nomi + hashteglar — qirra caption'da UMUMAN
      ko'rinmaydi, faqat qidiruv/hashteg uchun ICHKI ishlatiladi), video/rasmga "pro"
      brendlash (joy nomi + kanal belgisi) qo'shib, kanalga joylaydi.
   5. Qirrani "ishlatildi" deb belgilaydi (eski, tasodifiy rejim uchun muhim).
+
+MUHIM (universal sozlash — bots/nature/config.py): mavzular ham NATURE_TOPICS orqali
+cheklanishi mumkin (masalan "ocean,forest,mountain" — bo'sh bo'lsa, standart keng
+Wikipedia-asosli ro'yxat ishlaydi). Bularning barchasi KOD O'ZGARTIRMASDAN, faqat
+.env orqali boshqariladi — config.py'dagi har bir funksiyaning docstring'iga qarang.
 
 MUHIM (ataylab olib tashlangan xususiyat): caption'da Wikipedia'dan olingan qisqacha
 ma'lumot (izoh) YO'Q — bunday matn ba'zan (masalan joy nomi bilan bir xil nomdagi
@@ -41,6 +54,7 @@ from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
+from . import config
 from .facets import FACETS, FACETS_BY_KEY, build_hashtags, build_query_variants
 from .local_footage import find_local_video
 from .media_fetcher import download_bytes, download_file
@@ -83,14 +97,25 @@ def build_caption(theme: str, facet: dict, include_follow_reminder: bool = False
 
 
 def _find_and_prepare_video(sources: list[tuple[str, callable]], variants: list[str],
-                             tmp_path: Path, theme: str) -> Path | None:
-    """Har bir manba/so'rov birikmasi uchun BIR NECHTA nomzod (fetch_video_candidates)
-    oladi, va har birini KETMA-KET: yuklab olish -> bo'sh/qora kadr tekshiruvi ->
-    ffmpeg orqali Telegram uchun mos formatga o'tkazish (+ topilsa musiqa, +
-    brendlash) bosqichlaridan o'tkazadi. Birinchi nomzod istalgan bosqichda muvaffaqiyatsiz bo'lsa (yuklanmadi,
-    bo'sh ekan, yoki ffmpeg qayta ishlay olmadi), RO'YXATDAGI KEYINGI nomzodga o'tadi —
-    faqat BITTA muammoli fayl tufayli butun post video'siz (faqat rasm bilan)
-    qolib ketmasligi uchun (foydalanuvchi so'rovi).
+                             tmp_path: Path, theme: str, prefer_vertical: bool = True) -> Path | None:
+    """Har bir manba/so'rov birikmasi uchun BIR NECHTA nomzod (fetch_video_candidates —
+    endi har biri {"url", "is_vertical", ...} ko'rinishidagi dict) oladi, va har birini
+    KETMA-KET: yuklab olish -> bo'sh/qora kadr tekshiruvi -> ffmpeg orqali Telegram
+    uchun mos formatga o'tkazish (+ topilsa musiqa, + brendlash, + kerak bo'lsa
+    orientatsiya moslashtirish) bosqichlaridan o'tkazadi. Birinchi nomzod istalgan
+    bosqichda muvaffaqiyatsiz bo'lsa (yuklanmadi, bo'sh ekan, yoki ffmpeg qayta ishlay
+    olmadi), RO'YXATDAGI KEYINGI nomzodga o'tadi — faqat BITTA muammoli fayl tufayli
+    butun post video'siz (faqat rasm bilan) qolib ketmasligi uchun (foydalanuvchi
+    so'rovi).
+
+    MUHIM (universal manba-orientatsiya qo'llab-quvvatlash): fetcherlar endi bitta
+    so'rovning o'zida ham afzal (masalan vertikal), ham — NATURE_ALLOW_ORIENTATION_
+    FALLBACK yoqilgan bo'lsa — qarshi (gorizontal) orientatsiyadagi nomzodlarni birga
+    qaytaradi. Nomzod GORIZONTAL bo'lsa-yu, `prefer_vertical=True` bo'lsa, ffmpeg orqali
+    markazdan kesib (crop) 9:16 formatga keltiriladi — shu tarzda ko'pchilik stok-video
+    kutubxonalarida ustunlik qiladigan gorizontal kliplar ham ishlatilishi mumkin bo'ladi
+    (avval bular butunlay chetlab tashlanardi, natijada ko'p postlar video topilmagani
+    uchun faqat rasm bilan qolardi).
 
     Muvaffaqiyatli bo'lsa, Telegram'ga joylashga tayyor YAKUNIY (qayta ishlangan)
     fayl yo'lini qaytaradi. Hech qanday nomzod (barcha manba/so'rov/nomzod
@@ -99,8 +124,11 @@ def _find_and_prepare_video(sources: list[tuple[str, callable]], variants: list[
     attempt = 0
     for query in variants:
         for source_name, fetch_candidates_fn in sources:
-            candidate_urls = fetch_candidates_fn(query)
-            for video_url in candidate_urls:
+            candidates = fetch_candidates_fn(query)
+            for candidate in candidates:
+                video_url = candidate["url"]
+                is_vertical = candidate.get("is_vertical", prefer_vertical)
+                crop_to_vertical = prefer_vertical and not is_vertical
                 attempt += 1
                 url_suffix = Path(urlparse(video_url).path).suffix
                 raw_path = tmp_path / f"raw_{attempt}{url_suffix or '.mp4'}"
@@ -111,10 +139,10 @@ def _find_and_prepare_video(sources: list[tuple[str, callable]], variants: list[
                     logger.warning("'%s' manbasidan video (so'rov: '%s') bo'sh/qora ekan - keyingi nomzod sinaladi.", source_name, query)
                     continue
                 final_path = tmp_path / f"final_{attempt}.mp4"
-                if prepare_video_for_posting(raw_path, final_path, location_text=theme):
+                if prepare_video_for_posting(raw_path, final_path, location_text=theme, crop_to_vertical=crop_to_vertical):
                     logger.info(
-                        "Video topildi, sifat nazoratidan o'tdi va tayyorlandi — manba: %s, so'rov: '%s' (%d-nomzod).",
-                        source_name, query, attempt,
+                        "Video topildi, sifat nazoratidan o'tdi va tayyorlandi — manba: %s, so'rov: '%s' (%d-nomzod%s).",
+                        source_name, query, attempt, ", gorizontaldan vertikalga kesildi" if crop_to_vertical else "",
                     )
                     return final_path
                 logger.warning(
@@ -202,31 +230,53 @@ def run_once(forced_facet_key: str | None = None) -> int:
     # (Pixabay'ni qo'lda solishtirib, ko'proq yoqqani uchun). Keyinroq foydalanuvchi
     # Pexels'dagi videolar ham chiroyli chiqayotganini va Pixabay ba'zan (ayniqsa
     # noyob joy nomlari uchun) yetarli natija bermayotganini payqab, Pexels'ni
-    # QO'SHIMCHA (ikkinchi, Pixabay'dan KEYIN sinaladigan) manba sifatida qaytarishni
-    # so'radi. Endi tartib: Pixabay (asosiy) -> Pexels (qo'shimcha, agar kalit
-    # sozlangan bo'lsa) -> Wikimedia Commons (oxirgi, kalitsiz zaxira).
+    # QO'SHIMCHA manba sifatida qaytarishni so'radi. Bundan tashqari, foydalanuvchi
+    # kelajakda yana boshqa manba (masalan Unsplash) qo'shilishini yoki manbalar
+    # tartibi/yoqilishi .env orqali (kodni o'zgartirmasdan) boshqarilishini so'radi.
+    #
+    # Shuning uchun endi: har bir manba ADAPTER sifatida ro'yxatga olinadi
+    # (`_SOURCE_ADAPTERS`), va NATURE_SOURCE_ORDER (.env, config.py) shu ro'yxatdan
+    # QAYSILARI va QANDAY TARTIBDA ishlatilishini belgilaydi. Yangi manba qo'shish
+    # uchun kelajakda shu ro'yxatga bitta yozuv qo'shish kifoya (README.md'ga qarang).
     pixabay = PixabayFetcher(pixabay_key)
     pexels = PexelsFetcher(pexels_key) if pexels_key else None
     wikimedia = WikimediaFetcher()  # API kalit shart emas, doim faol qo'shimcha manba
 
-    def _video_sources(prefer_vertical: bool):
-        # MUHIM: endi `fetch_video` (bitta URL) o'rniga `fetch_video_candidates`
-        # (bir nechta URL ro'yxati) ishlatiladi — pastdagi `_find_and_prepare_video()`
-        # birinchi nomzod yuklab bo'lmasa yoki sifat nazoratidan o'tmasa, RO'YXATDAGI
-        # KEYINGI nomzodni avtomatik sinab ko'radi (foydalanuvchi so'rovi: "topgan va
-        # tekshiruvdan o'tgan videoni yuklay olmasa, boshqasini qidirsin").
-        sources = [("Pixabay", lambda q, pv=prefer_vertical: pixabay.fetch_video_candidates(q, prefer_vertical=pv))]
-        if pexels:
-            sources.append(("Pexels", lambda q, pv=prefer_vertical: pexels.fetch_video_candidates(q, prefer_vertical=pv)))
-        sources.append(("Wikimedia Commons", lambda q, pv=prefer_vertical: wikimedia.fetch_video_candidates(q, prefer_vertical=pv)))
-        return sources
+    _SOURCE_ADAPTERS = {
+        "pixabay": ("Pixabay", pixabay),
+        "pexels": ("Pexels", pexels),  # None bo'lsa (kalit sozlanmagan), pastda avtomatik chetlab o'tiladi
+        "wikimedia": ("Wikimedia Commons", wikimedia),
+    }
 
-    def _photo_sources(prefer_vertical: bool):
-        sources = [("Pixabay", lambda q, pv=prefer_vertical: pixabay.fetch_photo_candidates(q, prefer_vertical=pv))]
-        if pexels:
-            sources.append(("Pexels", lambda q, pv=prefer_vertical: pexels.fetch_photo_candidates(q, prefer_vertical=pv)))
-        sources.append(("Wikimedia Commons", lambda q, pv=prefer_vertical: wikimedia.fetch_photo_candidates(q, prefer_vertical=pv)))
-        return sources
+    def _ordered_adapters():
+        order = config.source_order()
+        chosen = [_SOURCE_ADAPTERS[key] for key in order if key in _SOURCE_ADAPTERS and _SOURCE_ADAPTERS[key][1]]
+        # Agar .env'da noto'g'ri/bo'sh tartib berilgan bo'lsa yoki barcha ko'rsatilgan
+        # manbalar o'chirilgan bo'lsa, botning umuman ishlamay qolishining oldini olish
+        # uchun standart tartibga qaytiladi.
+        if not chosen:
+            chosen = [(label, adapter) for label, adapter in _SOURCE_ADAPTERS.values() if adapter]
+        return chosen
+
+    def _video_sources(prefer_vertical: bool, min_dimension: int):
+        # MUHIM: endi `fetch_video` (bitta URL) o'rniga `fetch_video_candidates`
+        # (bir nechta {"url", "is_vertical", ...} dict ro'yxati) ishlatiladi —
+        # pastdagi `_find_and_prepare_video()` birinchi nomzod yuklab bo'lmasa yoki
+        # sifat nazoratidan o'tmasa, RO'YXATDAGI KEYINGI nomzodni avtomatik sinab
+        # ko'radi (foydalanuvchi so'rovi: "topgan va tekshiruvdan o'tgan videoni
+        # yuklay olmasa, boshqasini qidirsin").
+        return [
+            (label, lambda q, a=adapter, pv=prefer_vertical, md=min_dimension:
+             a.fetch_video_candidates(q, prefer_vertical=pv, min_dimension=md))
+            for label, adapter in _ordered_adapters()
+        ]
+
+    def _photo_sources(prefer_vertical: bool, min_dimension: int):
+        return [
+            (label, lambda q, a=adapter, pv=prefer_vertical, md=min_dimension:
+             a.fetch_photo_candidates(q, prefer_vertical=pv, min_dimension=md))
+            for label, adapter in _ordered_adapters()
+        ]
 
     # Follow-eslatma — standart holatda O'CHIRILGAN (0), foydalanuvchi ongli ravishda
     # .env'da yoqishi kerak (masalan =5 — har 5-postda bir marta). Bu — "faqat joy
@@ -246,7 +296,7 @@ def run_once(forced_facet_key: str | None = None) -> int:
     poster = TelegramPoster(bot_token, channel_id)
 
     # Video asosiy kontent hisoblanadi (foydalanuvchi so'ragani kabi), shuning uchun avval
-    # videoni sinaymiz.
+    # videoni sinaymiz — FAQAT agar NATURE_MEDIA_MODE="photo_only" qilib qo'yilmagan bo'lsa.
     #
     # 0-ustuvorlik: localfootage/ papkasida foydalanuvchi o'zi (masalan Shutterstock,
     # Envato Elements, iStock, Storyblocks, Motion Array kabi pullik kutubxonadan qonuniy
@@ -255,54 +305,61 @@ def run_once(forced_facet_key: str | None = None) -> int:
     # ulanmagan, chunki bunday kutubxonalar bepul API taklif qilmaydi va litsenziyasi
     # faqat qo'lda yuklab olishga ruxsat beradi).
     #
-    # Mos lokal video topilmasa, avtomatik bepul manbalarga (Pixabay/Wikimedia
-    # Commons) o'tiladi: avval telefon ekraniga to'liq mos vertikal (portret, "short"
-    # formatiga o'xshash) video qidiriladi — shunday videolar ko'proq topilishi/joylanishi
-    # uchun. Vertikal hech narsa topilmasa, gorizontal (landscape, "uzun" format) bilan
-    # qayta uriniladi — bo'sh qolgandan ko'ra shu ham yaxshi, lekin sifat baribir saralanadi.
-    #
-    # Ikkala holatda ham, video diskka tayyorlanadi/yuklab olinadi va ffmpeg orqali
-    # Telegram uchun mos formatga keltiriladi hamda (topilsa) fon musiqasi qo'shiladi.
+    # Mos lokal video topilmasa, avtomatik bepul manbalarga (NATURE_SOURCE_ORDER orqali
+    # sozlanadigan tartibda) o'tiladi. Har bir sifat darajasi (config.py'dagi
+    # min_video_dimension_tiers() — standart [1080, 720]) uchun avval telefon ekraniga
+    # to'liq mos vertikal (portret, "short" formatiga o'xshash) video qidiriladi;
+    # NATURE_ALLOW_ORIENTATION_FALLBACK yoqilgan bo'lsa (standart), gorizontal video ham
+    # nomzod sifatida qabul qilinib, ffmpeg orqali kesib (crop) vertikal qilinadi. Eng
+    # yuqori sifat darajasida hech narsa topilmasa, pastroq darajaga (masalan 720p) tushib
+    # qayta uriniladi — butunlay rad etish o'rniga.
+    media_mode = config.media_mode()
     video_posted = False
 
-    local_video = find_local_video(variants, prefer_vertical=True)
-    if local_video and not is_blank_video_file(local_video):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_path = Path(tmp_dir)
-            final_path = tmp_path / "final_video.mp4"
-            if prepare_video_for_posting(local_video, final_path, location_text=theme):
-                video_posted = poster.post_video_file(final_path, caption)
-                if not video_posted:
-                    logger.error("Lokal video (%s) joylashda xatolik.", local_video.name)
-            else:
-                # MUHIM (foydalanuvchi tomonidan aniqlangan muammo — haqiqiy misolda
-                # ko'rilgan): avval qayta ishlash (ffmpeg) muvaffaqiyatsiz bo'lsa, XOM
-                # (original) fayl to'g'ridan-to'g'ri joylanardi. Bu — sifat nazoratini
-                # butunlay chetlab o'tish degani: xom fayl noma'lum formatda (masalan
-                # .webm) bo'lishi mumkin, Telegram mobil ilovasi buni o'ynatib
-                # bo'lmaydigan oddiy FAYL (hujjat) sifatida ko'rsatib qo'yadi — bu esa
-                # "pro" kanalning ko'rinishini butunlay buzadi. Endi bunday holatda
-                # video UMUMAN JOYLANMAYDI (postsiz qolish, o'ynatib bo'lmaydigan xom
-                # fayl joylashdan ancha yaxshi).
-                logger.warning("Lokal video (%s) ffmpeg orqali qayta ishlanmadi - sifat nazoratidan o'tmagani uchun JOYLANMAYDI.", local_video.name)
+    if media_mode != "photo_only":
+        local_video = find_local_video(variants, prefer_vertical=True)
+        if local_video and not is_blank_video_file(local_video):
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                tmp_path = Path(tmp_dir)
+                final_path = tmp_path / "final_video.mp4"
+                if prepare_video_for_posting(local_video, final_path, location_text=theme):
+                    video_posted = poster.post_video_file(final_path, caption)
+                    if not video_posted:
+                        logger.error("Lokal video (%s) joylashda xatolik.", local_video.name)
+                else:
+                    # MUHIM (foydalanuvchi tomonidan aniqlangan muammo — haqiqiy misolda
+                    # ko'rilgan): avval qayta ishlash (ffmpeg) muvaffaqiyatsiz bo'lsa, XOM
+                    # (original) fayl to'g'ridan-to'g'ri joylanardi. Bu — sifat nazoratini
+                    # butunlay chetlab o'tish degani: xom fayl noma'lum formatda (masalan
+                    # .webm) bo'lishi mumkin, Telegram mobil ilovasi buni o'ynatib
+                    # bo'lmaydigan oddiy FAYL (hujjat) sifatida ko'rsatib qo'yadi — bu esa
+                    # "pro" kanalning ko'rinishini butunlay buzadi. Endi bunday holatda
+                    # video UMUMAN JOYLANMAYDI (postsiz qolish, o'ynatib bo'lmaydigan xom
+                    # fayl joylashdan ancha yaxshi).
+                    logger.warning("Lokal video (%s) ffmpeg orqali qayta ishlanmadi - sifat nazoratidan o'tmagani uchun JOYLANMAYDI.", local_video.name)
 
-    if not video_posted:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_path = Path(tmp_dir)
-            final_path = _find_and_prepare_video(_video_sources(True), variants, tmp_path, theme)
-            if not final_path:
-                final_path = _find_and_prepare_video(_video_sources(False), variants, tmp_path, theme)
-            if final_path:
-                video_posted = poster.post_video_file(final_path, caption)
+        if not video_posted:
+            for min_dimension in config.min_video_dimension_tiers():
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    tmp_path = Path(tmp_dir)
+                    final_path = _find_and_prepare_video(
+                        _video_sources(True, min_dimension), variants, tmp_path, theme, prefer_vertical=True,
+                    )
+                    if final_path:
+                        video_posted = poster.post_video_file(final_path, caption)
+                if video_posted:
+                    break
             if not video_posted:
                 logger.error("'%s' (%s) uchun videoni joylashda xatolik.", theme, facet["label"])
 
     photo_posted = False
-    if post_photo_too:
+    if post_photo_too and media_mode != "video_only":
         brand_label = os.getenv("NATURE_BRAND_LABEL", "Nature Channel")
-        photo_bytes = _find_and_prepare_photo(_photo_sources(True), variants, theme, brand_label)
-        if not photo_bytes:
-            photo_bytes = _find_and_prepare_photo(_photo_sources(False), variants, theme, brand_label)
+        photo_bytes = None
+        for min_dimension in config.min_photo_dimension_tiers():
+            photo_bytes = _find_and_prepare_photo(_photo_sources(True, min_dimension), variants, theme, brand_label)
+            if photo_bytes:
+                break
         if photo_bytes:
             photo_posted = poster.post_photo_bytes(photo_bytes, caption)
         if not photo_posted:

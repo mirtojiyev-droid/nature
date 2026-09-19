@@ -16,6 +16,7 @@ import random
 
 import requests
 
+from .config import allow_orientation_fallback
 from .quality import max_video_dimension
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,11 @@ def _rank_and_pick(items: list, key_fn, top_n: int = 5):
     ranked = sorted(items, key=key_fn, reverse=True)
     top = ranked[: min(top_n, len(ranked))]
     return random.choice(top)
+
+
+def _orientation_sort_key(is_vertical: bool, prefer_vertical: bool):
+    """pixabay_fetcher.py'dagi bir xil nomdagi funksiyaga qarang."""
+    return 0 if is_vertical == prefer_vertical else 1
 
 
 def _search_commons(query: str, filetype: str, limit: int = 20) -> list[dict]:
@@ -86,8 +92,9 @@ class WikimediaFetcher:
     fetch_video(query, prefer_vertical). API kalit shart emas — doim faol manba sifatida
     ishlatilishi mumkin."""
 
-    def _find_matching_photos(self, query: str, prefer_vertical: bool) -> list[dict]:
+    def _find_matching_photos(self, query: str, prefer_vertical: bool, min_dimension: int) -> list[dict]:
         """Ichki yordamchi — `fetch_photo` va `fetch_photo_candidates` uchun umumiy."""
+        allow_fallback = allow_orientation_fallback()
         pages = _search_commons(query, "bitmap")
         candidates = []
         for page in pages:
@@ -101,33 +108,38 @@ class WikimediaFetcher:
             url = info.get("url")
             if not url or mime == "image/svg+xml" or not mime.startswith("image/"):
                 continue
-            if width < MIN_DIMENSION or height < MIN_DIMENSION:
+            if width < min_dimension or height < min_dimension:
                 continue
             if size and size > MAX_PHOTO_BYTES:
                 continue
             is_vertical = height > width
-            if is_vertical != prefer_vertical:
+            if is_vertical != prefer_vertical and not allow_fallback:
                 continue
-            candidates.append({"url": url, "score": width * height})
-        return sorted(candidates, key=lambda c: c["score"], reverse=True)
+            candidates.append({"url": url, "score": width * height, "is_vertical": is_vertical})
+        return sorted(
+            candidates,
+            key=lambda c: (_orientation_sort_key(c["is_vertical"], prefer_vertical), -c["score"]),
+        )
 
-    def fetch_photo(self, query: str, prefer_vertical: bool = True) -> str | None:
-        candidates = self._find_matching_photos(query, prefer_vertical)
-        chosen = _rank_and_pick(candidates, lambda c: c["score"])
+    def fetch_photo(self, query: str, prefer_vertical: bool = True, min_dimension: int = MIN_DIMENSION) -> str | None:
+        candidates = self._find_matching_photos(query, prefer_vertical, min_dimension)
+        chosen = _rank_and_pick(candidates[:5], lambda c: c["score"])
         if not chosen:
             logger.info("Wikimedia Commons'da '%s' uchun mos rasm topilmadi", query)
             return None
         return chosen["url"]
 
-    def fetch_photo_candidates(self, query: str, prefer_vertical: bool = True, max_results: int = 4) -> list[str]:
+    def fetch_photo_candidates(self, query: str, prefer_vertical: bool = True, max_results: int = 4,
+                                min_dimension: int = MIN_DIMENSION) -> list[str]:
         """Bir nechta nomzod havolasini qaytaradi (pixabay_fetcher.py'dagi bir xil
         nomdagi metodga qarang)."""
-        candidates = self._find_matching_photos(query, prefer_vertical)
+        candidates = self._find_matching_photos(query, prefer_vertical, min_dimension)
         return [c["url"] for c in candidates[:max_results]]
 
-    def _find_matching_video_candidates(self, query: str, prefer_vertical: bool) -> list[dict]:
+    def _find_matching_video_candidates(self, query: str, prefer_vertical: bool, min_dimension: int) -> list[dict]:
         """Ichki yordamchi — `fetch_video` va `fetch_video_candidates` uchun umumiy
         (pixabay_fetcher.py'dagi bir xil naqshga qarang)."""
+        allow_fallback = allow_orientation_fallback()
         pages = _search_commons(query, "video")
         candidates = []
         for page in pages:
@@ -143,33 +155,40 @@ class WikimediaFetcher:
                 continue
             if not width or not height:
                 continue
-            if min(width, height) < MIN_VIDEO_DIMENSION:
-                continue  # past sifatli (masalan 480p) video — chetlab o'tiladi
+            if min(width, height) < min_dimension:
+                continue  # past sifatli video — chetlab o'tiladi
             if max(width, height) > max_video_dimension():
                 continue  # amaliy emas (8K va undan katta) — chetlab o'tiladi
             if size and size > MAX_VIDEO_BYTES:
                 continue
             is_vertical = height > width
-            if is_vertical != prefer_vertical:
+            if is_vertical != prefer_vertical and not allow_fallback:
                 continue
-            candidates.append({"url": url, "score": width * height})
-        return sorted(candidates, key=lambda c: c["score"], reverse=True)
+            candidates.append({"url": url, "score": width * height, "is_vertical": is_vertical})
+        return sorted(
+            candidates,
+            key=lambda c: (_orientation_sort_key(c["is_vertical"], prefer_vertical), -c["score"]),
+        )
 
-    def fetch_video(self, query: str, prefer_vertical: bool = True) -> str | None:
-        candidates = self._find_matching_video_candidates(query, prefer_vertical)
-        chosen = _rank_and_pick(candidates, lambda c: c["score"])
+    def fetch_video(self, query: str, prefer_vertical: bool = True, min_dimension: int = MIN_VIDEO_DIMENSION) -> str | None:
+        candidates = self._find_matching_video_candidates(query, prefer_vertical, min_dimension)
+        chosen = _rank_and_pick(candidates[:5], lambda c: c["score"])
         if not chosen:
             logger.info(
-                "Wikimedia Commons'da '%s' uchun %s formatdagi video topilmadi",
+                "Wikimedia Commons'da '%s' uchun video topilmadi",
                 query,
-                "vertikal" if prefer_vertical else "gorizontal",
             )
             return None
         return chosen["url"]
 
-    def fetch_video_candidates(self, query: str, prefer_vertical: bool = True, max_results: int = 4) -> list[str]:
-        """Bir nechta nomzod havolasini (eng yaxshisidan boshlab) qaytaradi —
-        pixabay_fetcher.py'dagi bir xil nomdagi metodga qarang (foydalanish sababi)."""
-        candidates = self._find_matching_video_candidates(query, prefer_vertical)
-        return [c["url"] for c in candidates[:max_results]]
+    def fetch_video_candidates(self, query: str, prefer_vertical: bool = True, max_results: int = 4,
+                                min_dimension: int = MIN_VIDEO_DIMENSION) -> list[dict]:
+        """Bir nechta nomzod ma'lumotini (eng yaxshisidan boshlab, har biri
+        {"url", "width", "height", "is_vertical"}) qaytaradi — pixabay_fetcher.py'dagi
+        bir xil nomdagi metodga qarang (foydalanish sababi)."""
+        candidates = self._find_matching_video_candidates(query, prefer_vertical, min_dimension)
+        return [
+            {"url": c["url"], "is_vertical": c["is_vertical"], "score": c["score"]}
+            for c in candidates[:max_results]
+        ]
 

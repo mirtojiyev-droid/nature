@@ -15,6 +15,8 @@ from pathlib import Path
 
 import requests
 
+from .config import allowed_topics
+
 logger = logging.getLogger(__name__)
 
 WIKI_SEARCH_URL = "https://en.wikipedia.org/w/api.php"
@@ -90,21 +92,52 @@ def _search_term(term: str, limit: int = 50, max_retries: int = 2) -> list[str]:
     return []
 
 
+def _active_search_terms() -> list[str]:
+    """Standart bo'yicha to'liq `SEARCH_TERMS` (24 ta) ishlatiladi. Agar
+    foydalanuvchi .env'da NATURE_TOPICS bilan mavzularni CHEKLAGAN bo'lsa
+    (masalan "ocean,forest,mountain"), FAQAT shu kalit so'zlarga mos keladigan
+    (qisman moslik ham hisoblanadi — masalan "ocean" -> "coral reef" ga mos
+    kelmaydi, lekin aynan shu so'zning o'zi ro'yxatda bo'lmasa, foydalanuvchi
+    bergan so'z TO'G'RIDAN-TO'G'RI qo'shimcha qidiruv termini sifatida
+    ishlatiladi) so'zlar bilan qidiriladi. Bu ham natijani mavzu bo'yicha
+    cheklaydi, ham (kamroq so'z = kamroq Wikipedia so'rovi) havzani ANCHA
+    TEZROQ yig'adi — bu esa Render qayta ishga tushishlari/deploylari
+    tugallanishga ulgurmagan siklni to'xtatib qo'yish xavfini kamaytiradi."""
+    topics = allowed_topics()
+    if not topics:
+        return SEARCH_TERMS
+
+    active = []
+    for topic in topics:
+        matches = [term for term in SEARCH_TERMS if topic in term or term in topic]
+        if matches:
+            active.extend(m for m in matches if m not in active)
+        elif topic not in active:
+            # Foydalanuvchi ro'yxatda YO'Q so'z bergan (masalan "ocean") — baribir
+            # to'g'ridan-to'g'ri Wikipedia qidiruv termini sifatida ishlatiladi,
+            # chunki bu ham Pixabay/Pexels'da haqiqiy natija beradigan so'z bo'lishi
+            # mumkin.
+            active.append(topic)
+    return active or SEARCH_TERMS
+
+
 def _fetch_fresh_pool() -> dict[str, str]:
-    """Har bir joy nomini QAYSI SEARCH_TERM (kategoriya, masalan "mountain range",
-    "wetland") orqali topilganini ham saqlab qaytaradi — {joy_nomi: kategoriya}.
-    Bu kategoriya keyinroq run.py'da "umumiy manzarasi" qirrasi uchun (aniq joy
-    nomi bo'yicha Pixabay'da hech narsa topilmasa) TEMATIK JIHATDAN TO'G'RI zaxira
-    qidiruv so'zi sifatida ishlatiladi (masalan noyob "Khentii Mountains" nomi
-    o'rniga "mountain range" — bu haqiqatan ham o'sha joy haqida, umuman
-    aloqasiz umumiy so'z emas)."""
+    """Har bir joy nomini QAYSI qidiruv termini (kategoriya, masalan "mountain
+    range", "wetland" — yoki NATURE_TOPICS orqali cheklangan bo'lsa, shu
+    ro'yxatdagi so'z) orqali topilganini ham saqlab qaytaradi — {joy_nomi:
+    kategoriya}. Bu kategoriya keyinroq run.py'da "umumiy manzarasi" qirrasi
+    uchun (aniq joy nomi bo'yicha Pixabay'da hech narsa topilmasa) TEMATIK
+    JIHATDAN TO'G'RI zaxira qidiruv so'zi sifatida ishlatiladi (masalan noyob
+    "Khentii Mountains" nomi o'rniga "mountain range" — bu haqiqatan ham o'sha
+    joy haqida, umuman aloqasiz umumiy so'z emas)."""
+    terms = _active_search_terms()
     pool: dict[str, str] = {}
-    for i, term in enumerate(SEARCH_TERMS):
+    for i, term in enumerate(terms):
         titles = _search_term(term)
         for title in titles:
             pool.setdefault(title, term)  # birinchi topilgan kategoriya saqlanadi
         logger.info("'%s' bo'yicha %d ta joy topildi (jami havza: %d)", term, len(titles), len(pool))
-        if i < len(SEARCH_TERMS) - 1:
+        if i < len(terms) - 1:
             # Wikipedia'ni ketma-ket ko'p so'rov bilan band qilib, 429 (Too Many
             # Requests) xatosiga uchramaslik uchun har bir so'rov orasida kichik pauza.
             time.sleep(0.4)
@@ -143,16 +176,22 @@ def get_topic_pool(seed_places: list[str] | None = None) -> list[str]:
     shu sababdan to'xtamasligi kerak."""
     global _last_category_map
     seed = seed_places or []
+    active_terms = _active_search_terms()
 
     cache = _load_cache()
     if cache:
         age = time.time() - cache.get("fetched_at", 0)
         cached_pool = cache.get("pool")
-        # MUHIM (eski kesh formati bilan moslik): avvalgi versiyada "pool" oddiy
-        # RO'YXAT edi (kategoriyasiz). Yangi versiyada bu {joy: kategoriya} DICT.
-        # Ikkalasini ham to'g'ri o'qiy olishimiz kerak (masalan eski keshli
-        # muhitdan yangi kodga o'tilganda xato bermasligi uchun).
-        if age < CACHE_MAX_AGE_SECONDS and cached_pool:
+        # MUHIM (NATURE_TOPICS bilan mos ishlashi uchun qo'shildi): agar
+        # foydalanuvchi .env'da NATURE_TOPICS'ni O'ZGARTIRSA (masalan mavzularni
+        # cheklasa yoki kengaytirsa), lekin eski (boshqa mavzular bilan
+        # yig'ilgan) kesh hali 1 haftadan yosh bo'lsa — eski keshni ishlatish
+        # noto'g'ri bo'lar edi (yangi sozlama e'tiborga olinmagan bo'lardi).
+        # Shuning uchun kesh qaysi qidiruv terminlari bilan yig'ilganini ham
+        # saqlaymiz va mos kelmasa, keshni chetlab o'tib, DARHOL qayta yig'amiz.
+        cached_terms = cache.get("search_terms")
+        terms_match = cached_terms is None or sorted(cached_terms) == sorted(active_terms)
+        if age < CACHE_MAX_AGE_SECONDS and cached_pool and terms_match:
             if isinstance(cached_pool, dict):
                 _last_category_map = cached_pool
                 pool = sorted(set(cached_pool.keys()) | set(seed))
@@ -179,7 +218,10 @@ def get_topic_pool(seed_places: list[str] | None = None) -> list[str]:
     _last_category_map = fresh_pool
     try:
         CACHE_FILE.write_text(
-            json.dumps({"fetched_at": time.time(), "pool": fresh_pool}, ensure_ascii=False, indent=2),
+            json.dumps(
+                {"fetched_at": time.time(), "pool": fresh_pool, "search_terms": active_terms},
+                ensure_ascii=False, indent=2,
+            ),
             encoding="utf-8",
         )
     except OSError as exc:

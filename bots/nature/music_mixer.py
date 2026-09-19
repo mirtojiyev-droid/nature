@@ -80,6 +80,21 @@ def _scale_filter(max_dimension: int) -> str:
     return f"scale='min({max_dimension},iw)':'min({max_dimension},ih)':force_original_aspect_ratio=decrease"
 
 
+def _crop_to_vertical_filter(max_dimension: int) -> str:
+    """MUHIM (universal manba-orientatsiya qo'llab-quvvatlash uchun qo'shildi):
+    manba video GORIZONTAL (kino/dron uslubida tushirilgan, ko'pchilik Pixabay/
+    Pexels tabiat kliplari shunday) bo'lsa-yu, vertikal (9:16, Stories/Shorts
+    ko'rinishi) chiqish kerak bo'lsa, oddiy `scale` filtri (yon tomonlariga
+    qora chiziq/padding qo'shadi) o'rniga MARKAZDAN KESIB (crop) 9:16 nisbatga
+    keltiradi — natija to'liq ekranni egallaydi, qora chiziqlarsiz. Manba
+    balandligi 9:16 nisbatdan "torroq" (juda keng panorama) bo'lsa, avval
+    kenglik bo'yicha kesib, keyin belgilangan o'lchamgacha kattalashtiriladi."""
+    return (
+        f"crop='min(iw,ih*9/16)':'min(ih,iw*16/9)',"
+        f"scale='min({max_dimension},iw)':'min({max_dimension*16//9},ih)':force_original_aspect_ratio=decrease"
+    )
+
+
 def _first_existing_font(paths: list[str]) -> str | None:
     for p in paths:
         if os.path.exists(p):
@@ -204,9 +219,9 @@ def _get_video_codec(path: Path) -> str | None:
 
 def _build_ffmpeg_cmd(video_path: Path, output_path: Path, max_dimension: int, force_reencode: bool,
                        duration: float | None, track: Path | None, crf: int,
-                       overlay_filter: str | None = None) -> list[str]:
+                       overlay_filter: str | None = None, crop_to_vertical: bool = False) -> list[str]:
     if force_reencode:
-        vf = _scale_filter(max_dimension)
+        vf = _crop_to_vertical_filter(max_dimension) if crop_to_vertical else _scale_filter(max_dimension)
         if overlay_filter:
             vf = f"{vf},{overlay_filter}"
         video_args = ["-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-crf", str(crf), "-pix_fmt", "yuv420p"]
@@ -237,7 +252,8 @@ def _build_ffmpeg_cmd(video_path: Path, output_path: Path, max_dimension: int, f
 
 
 def prepare_video_for_posting(video_path: Path, output_path: Path,
-                               location_text: str | None = None, brand_label: str | None = None) -> bool:
+                               location_text: str | None = None, brand_label: str | None = None,
+                               crop_to_vertical: bool = False) -> bool:
     """video_path'dagi videoni Telegram uchun mos H.264/AAC mp4'ga keltiradi (kerak bo'lsa)
     va topilsa fon musiqasi qo'shadi, natijani output_path'ga saqlaydi.
 
@@ -245,6 +261,12 @@ def prepare_video_for_posting(video_path: Path, output_path: Path,
     (yarim shaffof fon + oq matn) brendlash matni bitta ffmpeg bosqichida qo'shiladi —
     alohida ikkinchi qayta kodlash bosqichi KERAK EMAS (samaradorlik uchun muhim).
     `brand_label` berilmasa, `.env`dagi NATURE_BRAND_LABEL yoki standart qiymat ishlatiladi.
+
+    `crop_to_vertical=True` bo'lsa (run.py manba GORIZONTAL ekanini, lekin
+    VERTIKAL chiqish kerakligini aniqlaganda beradi — NATURE_ALLOW_ORIENTATION_
+    FALLBACK yoqilgan bo'lganda ko'p uchraydigan holat), video markazdan
+    kesib (crop) 9:16 formatga keltiriladi (qora chiziqlar bilan to'ldirish
+    o'rniga) — bu holatda albatta qayta kodlanadi (stream-copy ishlatilmaydi).
 
     Eng yuqori sifat (4K, TARGET_MAX_DIMENSION) bilan boshlanadi. Manba allaqachon H.264
     bo'lsa va qayta kodlash shart bo'lmasa, video striim shunchaki nusxalanadi (tez, sifat
@@ -284,9 +306,10 @@ def prepare_video_for_posting(video_path: Path, output_path: Path,
         # bo'lsa, striim nusxalanadi (tezroq, sifat yo'qolmaydi). Overlay so'ralgan bo'lsa,
         # matnni "kuydirish" uchun albatta qayta kodlash SHART (stream-copy orqali matn
         # qo'shib bo'lmaydi) — shuning uchun bu holatda force_reencode har doim True.
-        force_reencode = (codec != "h264") or (attempt_idx > 0) or bool(overlay_filter)
+        force_reencode = (codec != "h264") or (attempt_idx > 0) or bool(overlay_filter) or crop_to_vertical
         crf = 23 if attempt_idx == 0 else 26  # pastroq bosqichlarda biroz ko'proq siqiladi
-        cmd = _build_ffmpeg_cmd(video_path, output_path, max_dimension, force_reencode, duration, track, crf, overlay_filter)
+        cmd = _build_ffmpeg_cmd(video_path, output_path, max_dimension, force_reencode, duration, track, crf,
+                                 overlay_filter, crop_to_vertical)
 
         try:
             subprocess.run(cmd, capture_output=True, text=True, timeout=300, check=True)
