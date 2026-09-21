@@ -71,6 +71,7 @@ from bots.crypto import run_once as run_crypto  # noqa: E402
 from bots.football import run_once as run_football  # noqa: E402
 from bots.nature import run_once as run_nature  # noqa: E402
 from bots.nature.schedule_config import NATURE_DAILY_SCHEDULE  # noqa: E402
+from shared.data_dir import get_data_dir  # noqa: E402
 
 
 def _env_int(name: str, default: int) -> int:
@@ -141,7 +142,9 @@ _BOT_SEMAPHORES = {"tabiat": _nature_semaphore}
 # ishlayapti" bo'lib ko'rinishiga olib kelardi. Shu faylga yozib qo'yish orqali, qayta
 # ishga tushgandan keyin ham hub "oxirgi marta qachon ishlaganini" biladi va shunga
 # yarasha to'g'ri vaqtda keyingi ishga tushirishni rejalashtiradi.
-_SCHEDULE_STATE_FILE = Path(__file__).parent / "hub_schedule_state.json"
+# MUHIM: HUB_DATA_DIR (.env) berilsa, bu fayl Render Persistent Disk'ga yoziladi va
+# DEPLOY QILINGANDA HAM saqlanib qoladi — shared/data_dir.py'ga qarang.
+_SCHEDULE_STATE_FILE = get_data_dir("hub", Path(__file__).parent) / "hub_schedule_state.json"
 
 
 def _load_last_run_times() -> dict:

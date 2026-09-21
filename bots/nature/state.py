@@ -16,10 +16,15 @@ import random
 from datetime import datetime
 from pathlib import Path
 
+from shared.data_dir import get_data_dir
+
 logger = logging.getLogger(__name__)
 
-STATE_FILE = Path(__file__).parent / "window_state.json"
-HISTORY_FILE = Path(__file__).parent / "theme_history.json"
+# MUHIM: HUB_DATA_DIR (.env) berilsa, bu fayllar Render Persistent Disk'ga yoziladi va
+# DEPLOY QILINGANDA HAM saqlanib qoladi — shared/data_dir.py'ga qarang.
+_NATURE_DATA_DIR = get_data_dir("nature", Path(__file__).parent)
+STATE_FILE = _NATURE_DATA_DIR / "window_state.json"
+HISTORY_FILE = _NATURE_DATA_DIR / "theme_history.json"
 WINDOW_HOURS = 4
 # Kunlik 6 ta oyna (24/4) bor; so'nggi ~7 kunlik mavzular imkon qadar takrorlanmasin.
 HISTORY_AVOID_WINDOWS = 7 * (24 // WINDOW_HOURS)
@@ -110,7 +115,7 @@ def mark_facet_used(idx: int) -> None:
     _save_json(STATE_FILE, state)
 
 
-POST_COUNTER_FILE = Path(__file__).parent / "post_counter.json"
+POST_COUNTER_FILE = _NATURE_DATA_DIR / "post_counter.json"
 
 
 def increment_and_get_post_count() -> int:

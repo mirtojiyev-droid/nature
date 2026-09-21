@@ -16,11 +16,14 @@ from pathlib import Path
 import requests
 
 from .config import allowed_topics
+from shared.data_dir import get_data_dir
 
 logger = logging.getLogger(__name__)
 
 WIKI_SEARCH_URL = "https://en.wikipedia.org/w/api.php"
-CACHE_FILE = Path(__file__).parent / "topic_pool_cache.json"
+# MUHIM: HUB_DATA_DIR (.env) berilsa, bu fayl Render Persistent Disk'ga yoziladi va
+# DEPLOY QILINGANDA HAM saqlanib qoladi — shared/data_dir.py'ga qarang.
+CACHE_FILE = get_data_dir("nature", Path(__file__).parent) / "topic_pool_cache.json"
 CACHE_MAX_AGE_SECONDS = 7 * 24 * 3600  # 1 hafta
 
 # Tabiat mavzusidagi turli qidiruv so'zlari — har biri Wikipedia'dan ko'plab real joy
