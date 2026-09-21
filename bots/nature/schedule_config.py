@@ -18,9 +18,9 @@ oralig'ida, tasodifiy navbat bilan qirra tanlab — ishlashda davom etadi.
 
 NATURE_DAILY_SCHEDULE = [
     ("00:00", "general"),
-    ("00:30", "general"),
+    ("00:30", "waterfall"),
     ("01:00", "night"),
-    ("01:30", "general"),
+    ("01:30", "beach"),
     ("02:00", "night"),
     ("02:30", "night"),
     ("03:00", "wildlife"),
