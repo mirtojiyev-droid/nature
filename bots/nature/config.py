@@ -112,6 +112,19 @@ def source_order() -> list[str]:
     return order or list(DEFAULT_SOURCE_ORDER)
 
 
+def media_overlay_enabled() -> bool:
+    """Video/rasm USTIGA joy nomi + kanal belgisini ("lower-third" uslubida)
+    chizish kerakmi. MUHIM (foydalanuvchi qarori): standart bo'yicha ENDI
+    O'CHIRILGAN — chunki bu matn ko'pincha manzaraning eng asosiy qismini
+    (masalan sharshara yoki tog' cho'qqisi) yopib qo'yardi, ayniqsa kichik
+    ekranda. Caption (Telegram post matni, rasm/video OSTIDA/YONIDA
+    ko'rinadi, ustida EMAS) hali ham joy nomi bilan chiqadi — faqat rasm/
+    videoning O'ZIGA endi hech narsa chizilmaydi.
+
+    Yoqish uchun: NATURE_ENABLE_MEDIA_OVERLAY=true."""
+    return os.getenv("NATURE_ENABLE_MEDIA_OVERLAY", "false").strip().lower() == "true"
+
+
 def wikipedia_discovery_enabled() -> bool:
     """True bo'lsa (standart), bot Wikipedia orqali minglab qo'shimcha joy
     nomini avtomatik kashf qiladi (topics.py) — bu ko'proq xilma-xillik beradi,

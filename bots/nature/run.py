@@ -139,7 +139,13 @@ def _find_and_prepare_video(sources: list[tuple[str, callable]], variants: list[
                     logger.warning("'%s' manbasidan video (so'rov: '%s') bo'sh/qora ekan - keyingi nomzod sinaladi.", source_name, query)
                     continue
                 final_path = tmp_path / f"final_{attempt}.mp4"
-                if prepare_video_for_posting(raw_path, final_path, location_text=theme, crop_to_vertical=crop_to_vertical):
+                # MUHIM (foydalanuvchi qarori): standart bo'yicha video ustiga hech qanday
+                # matn (joy nomi/kanal belgisi) chizilmaydi - manzaraning asosiy qismini
+                # yopib qo'yardi. config.media_overlay_enabled() bilan (.env orqali)
+                # yoqish mumkin - shunda location_text=theme uzatiladi, aks holda None
+                # (prepare_video_for_posting overlay'ni UMUMAN qo'shmaydi).
+                overlay_location = theme if config.media_overlay_enabled() else None
+                if prepare_video_for_posting(raw_path, final_path, location_text=overlay_location, crop_to_vertical=crop_to_vertical):
                     logger.info(
                         "Video topildi, sifat nazoratidan o'tdi va tayyorlandi — manba: %s, so'rov: '%s' (%d-nomzod%s).",
                         source_name, query, attempt, ", gorizontaldan vertikalga kesildi" if crop_to_vertical else "",
@@ -171,8 +177,15 @@ def _find_and_prepare_photo(sources: list[tuple[str, callable]], variants: list[
                 if is_blank_image_bytes(photo_bytes):
                     logger.warning("'%s' manbasidan rasm (so'rov: '%s') bo'sh/bir xil rangdan iborat - keyingi nomzod sinaladi.", source_name, query)
                     continue
-                overlaid = add_branding_overlay(photo_bytes, theme, brand_label)
-                result = overlaid or photo_bytes
+                # MUHIM (foydalanuvchi qarori): standart bo'yicha rasm ustiga hech qanday
+                # matn (joy nomi/kanal belgisi) chizilmaydi - manzaraning asosiy qismini
+                # yopib qo'yardi. config.media_overlay_enabled() bilan (.env orqali)
+                # yoqish mumkin.
+                if config.media_overlay_enabled():
+                    overlaid = add_branding_overlay(photo_bytes, theme, brand_label)
+                    result = overlaid or photo_bytes
+                else:
+                    result = photo_bytes
                 logger.info("Rasm topildi va tayyorlandi — manba: %s, so'rov: '%s'.", source_name, query)
                 return result
     logger.info("Hech qanday rasm nomzodi sifat nazoratidan o'ta olmadi.")
@@ -322,7 +335,8 @@ def run_once(forced_facet_key: str | None = None) -> int:
             with tempfile.TemporaryDirectory() as tmp_dir:
                 tmp_path = Path(tmp_dir)
                 final_path = tmp_path / "final_video.mp4"
-                if prepare_video_for_posting(local_video, final_path, location_text=theme):
+                overlay_location = theme if config.media_overlay_enabled() else None
+                if prepare_video_for_posting(local_video, final_path, location_text=overlay_location):
                     video_posted = poster.post_video_file(final_path, caption)
                     if not video_posted:
                         logger.error("Lokal video (%s) joylashda xatolik.", local_video.name)
