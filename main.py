@@ -244,6 +244,38 @@ def threaded_job(name: str, fn) -> None:
     threading.Thread(target=job, args=(name, fn), name=f"bot-{name}", daemon=True).start()
 
 
+# MUHIM (haqiqiy voqeada aniqlangan OOM-qulash sikli tuzatildi): hub HAR SAFAR
+# qayta ishga tushganda (Render qayta deploy yoki xotira sababli avtomatik
+# restart), BARCHA botlar ("darhol ishga tushirish" mantig'i orqali) deyarli BIR
+# VAQTDA ishga tushirilardi. Agar bu restart aynan xotira yetishmasligi (OOM)
+# tufayli bo'lsa, natija — CHEKSIZ SIKL edi: qayta ishga tushish -> barcha botlar
+# darhol, bir vaqtda ishga tushadi -> operativ xotira yana chegaradan oshadi ->
+# yana OOM -> yana restart, va h.k. — tashqaridan "bot bir marta ishga tushadi,
+# keyin umuman ishlamay qoladi" bo'lib ko'rinadi. Bundan tashqari
+# shared/resource_guard.py orqali ffmpeg (tabiat) va PIL karta chizish (kripto)
+# hech qachon bir vaqtda ishlamaydi — lekin ular hali ham BIR VAQTDA boshlanib,
+# navbatda kutishi mumkin, bu esa yana ikkalasining boshqa (tarmoq so'rovi)
+# bosqichlari bilan qo'shilib xotirani oshirib yuborishi mumkin. Shuning uchun
+# kripto/futbolning HUB ISHGA TUSHGANDAGI "darhol ishga tushirish" chaqiruvi
+# `HUB_STARTUP_STAGGER_SECONDS` (standart 60s) kechiktiriladi — tabiat boti esa
+# ATAYLAB kechiktirilmaydi (uning kunlik jadvali aniq vaqtga bog'liq).
+_STARTUP_STAGGER_SECONDS = max(0, _env_int("HUB_STARTUP_STAGGER_SECONDS", 60))
+
+
+def staggered_threaded_job(name: str, fn, delay_seconds: float) -> None:
+    """`threaded_job`ning kechiktirilgan versiyasi — hub ENDI ishga tushgan
+    paytdagi "darhol ishga tushirish" chaqiruvlari uchun (rejalashtirilgan,
+    kelajakdagi `schedule.every(...)` chaqiruvlari uchun EMAS — ular allaqachon
+    o'zining vaqtida ishlaydi). `delay_seconds=0` bo'lsa, oddiy `threaded_job`
+    bilan bir xil (kechikishsiz)."""
+    if delay_seconds <= 0:
+        threaded_job(name, fn)
+        return
+    timer = threading.Timer(delay_seconds, threaded_job, args=(name, fn))
+    timer.daemon = True
+    timer.start()
+
+
 def setup_schedule() -> bool:
     """Barcha yoqilgan botlarni `schedule`ga ro'yxatdan o'tkazadi va kerak bo'lsa
     darhol (yoki keyinroq, agar yaqinda ishlagan bo'lsa) ishga tushiradi. Kamida bitta
@@ -347,7 +379,18 @@ def setup_schedule() -> bool:
                 label, (now - last) / 60, remaining_min,
             )
         else:
-            threaded_job(name, fn)
+            # MUHIM: kechiktirilgan holda ishga tushiriladi (yuqoridagi
+            # _STARTUP_STAGGER_SECONDS izohiga qarang) — tabiat botining darhol
+            # (kechikishsiz) ishga tushadigan "catch-up" bosqichi bilan operativ
+            # xotira cho'qqisi bir vaqtga to'g'ri kelib, OOM-qulash siklini
+            # keltirib chiqarmasligi uchun.
+            if _STARTUP_STAGGER_SECONDS > 0:
+                logger.info(
+                    "  -> %s hub ishga tushgach %ds kutib, keyin ishga tushadi (tabiat boti bilan "
+                    "operativ xotira cho'qqisi to'qnashmasligi uchun).",
+                    label, _STARTUP_STAGGER_SECONDS,
+                )
+            staggered_threaded_job(name, fn, _STARTUP_STAGGER_SECONDS)
 
     return scheduled_count > 0
 

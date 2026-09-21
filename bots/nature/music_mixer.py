@@ -30,6 +30,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from shared.resource_guard import heavy_operation
+
 logger = logging.getLogger(__name__)
 
 MUSIC_DIR = Path(__file__).parent / "music"
@@ -312,7 +314,12 @@ def prepare_video_for_posting(video_path: Path, output_path: Path,
                                  overlay_filter, crop_to_vertical)
 
         try:
-            subprocess.run(cmd, capture_output=True, text=True, timeout=300, check=True)
+            # MUHIM (OOM-qulash sikli tuzatildi — shared/resource_guard.py'ga
+            # qarang): ffmpeg operativ xotira jihatidan og'ir, shuning uchun
+            # kripto botining karta chizish bosqichi bilan BIR VAQTDA ishlamasligi
+            # uchun umumiy "og'ir operatsiya" semafori bilan o'raladi.
+            with heavy_operation("nature-ffmpeg"):
+                subprocess.run(cmd, capture_output=True, text=True, timeout=300, check=True)
         except subprocess.SubprocessError as exc:
             # MUHIM: bu urinish muvaffaqiyatsiz bo'ldi deb `success`ni ATAYLAB False'da
             # qoldiramiz — ffmpeg xatolik bilan chiqqanda ham output_path'da chala/buzuq
