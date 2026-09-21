@@ -55,25 +55,38 @@ _FONT_REGULAR_PATHS = [
 # Telegram Bot API orqali oddiy bot fayl yuborishning standart qattiq chegarasi.
 TELEGRAM_MAX_VIDEO_BYTES = 50 * 1024 * 1024
 
-# Eng yuqori maqsadli sifat — standart 4K (UHD). Agar shu sifatdagi natija Telegram
-# hajm chegarasidan oshib ketsa, ketma-ket pastroq bosqichlar bilan qayta uriniladi.
+# Eng yuqori maqsadli sifat. Agar shu sifatdagi natija Telegram hajm chegarasidan
+# oshib ketsa, ketma-ket pastroq bosqichlar bilan qayta uriniladi.
 #
-# MUHIM (kam xotirali serverlar uchun): 4K'da ffmpeg (libx264) qayta kodlash bir necha
-# yuz MB'gacha operativ xotira talab qilishi mumkin. Render/Railway kabi platformalarning
-# eng arzon tariflari (odatda 512MB) uchun bu YETARLI BO'LMASLIGI mumkin va "out of
-# memory" xatosiga olib kelishi mumkin. Shuning uchun eng yuqori bosqich .env orqali
-# pasaytirilishi mumkin: NATURE_MAX_VIDEO_QUALITY_PX=1920 (yoki 1280) qiling.
-_DEFAULT_FALLBACK_TIERS = [3840, 2560, 1920, 1280]
+# MUHIM (haqiqiy voqeada aniqlangan OOM sababi — ATAYLAB PAST STANDART): avval bu
+# yerda standart 3840 (to'liq 4K) edi. 4K'da ffmpeg (libx264) qayta kodlash bir necha
+# YUZ MB operativ xotira talab qilishi mumkin — Render/Railway kabi platformalarning
+# eng arzon tariflarida (odatda 512MB) BU YOLG'IZ O'ZI (boshqa botlar ishlamasa ham)
+# "out of memory" (SIGKILL/restart) uchun YETARLI bo'lib chiqdi, chunki bot HAR SAFAR
+# video joylaganda avval eng yuqori (4K) darajani sinab ko'rar edi. .env.example'da
+# ko'rsatma sifatida 1280 tavsiya qilingan bo'lsa-da, bu FAQAT namuna fayl — agar
+# foydalanuvchi NATURE_MAX_VIDEO_QUALITY_PX'ni Render Environment Variables'ga
+# QO'LDA QO'SHMAGAN bo'lsa, kodning o'zi baribir eski (xavfli) standart 4K'ga
+# qaytardi. Shuning uchun endi XAVFSIZ standart to'g'ridan-to'g'ri KODNING O'ZIGA
+# yozilgan — .env'da NATURE_MAX_VIDEO_QUALITY_PX umuman ko'rsatilmasa ham, bot
+# to'g'ridan-to'g'ri kam xotirali serverlar uchun mos (720p) darajadan boshlaydi.
+# Ko'proq operativ xotirali serverda (1GB+) yuqoriroq sifat xohlasangiz,
+# .env'da NATURE_MAX_VIDEO_QUALITY_PX=1920 yoki 3840 deb ANIQ ko'rsating.
+_DEFAULT_FALLBACK_TIERS = [3840, 2560, 1920, 1280, 720]
+_SAFE_DEFAULT_MAX_DIMENSION = 720
 
 
 def _fallback_dimensions() -> list[int]:
     """FALLBACK_DIMENSIONS ro'yxatini NATURE_MAX_VIDEO_QUALITY_PX bilan cheklab
     qaytaradi. .env o'zgarishi darhol ta'sir qiladi (modul yuklanganda emas, har safar
-    prepare_video_for_posting chaqirilganda hisoblanadi)."""
+    prepare_video_for_posting chaqirilganda hisoblanadi). MUHIM: agar .env'da
+    NATURE_MAX_VIDEO_QUALITY_PX umuman ko'rsatilmagan bo'lsa, standart endi 3840
+    (4K) EMAS — kam xotirali serverlarda OOM'ning oldini olish uchun xavfsiz past
+    qiymat (720p) ishlatiladi."""
     try:
-        cap = int(os.getenv("NATURE_MAX_VIDEO_QUALITY_PX", "3840"))
+        cap = int(os.getenv("NATURE_MAX_VIDEO_QUALITY_PX", str(_SAFE_DEFAULT_MAX_DIMENSION)))
     except ValueError:
-        cap = 3840
+        cap = _SAFE_DEFAULT_MAX_DIMENSION
     tiers = [t for t in _DEFAULT_FALLBACK_TIERS if t <= cap]
     return tiers or [cap]
 
