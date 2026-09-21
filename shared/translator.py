@@ -1,0 +1,163 @@
+"""
+Berilgan matnni o'zbek tiliga tarjima qiladi (deep-translator kutubxonasi orqali,
+API kalit talab qilmaydi). .env faylida tegishli *_TRANSLATE_TO_UZBEK=false qilib
+o'chirib qo'yish mumkin.
+
+MUHIM (haqiqiy voqea asosida tuzatilgan xato): norasmiy/bepul Google Translate
+xizmati ba'zan (masalan ko'p so'rov yuborilganda yoki xizmat vaqtincha band bo'lganda)
+tarjima o'rniga Google'ning umumiy xato sahifasini ("Error 500 (Server Error) ...
+That's all we know.") qaytaradi. Bu HTTP darajasida "xatolik" sifatida chiqmaydi —
+deep_translator buni oddiy muvaffaqiyatli natija deb hisoblab, o'sha matnni qaytarib
+yuboradi. Natijada bot bu chalkash xato-matnni "tarjima" deb kanalga joylab yuborishi
+mumkin edi. Shuning uchun bu yerda ikkita himoya qatlami bor:
+  1. Natija xato-sahifaga o'xshaydimi tekshiriladi (pastdagi imzolar ro'yxati) — shunday
+     bo'lsa, natija RAD ETILADI (ishlatilmaydi).
+  2. Birinchi xizmat (Google) muvaffaqiyatsiz/shubhali natija bersa, ikkinchi, mustaqil
+     xizmat (MyMemory) avtomatik sinaladi. Ikkalasi ham muvaffaqiyatsiz bo'lsa, asl
+     (tarjima qilinmagan) matn qaytariladi — bu HAR DOIM chalkash xato-matndan yaxshiroq,
+     chunki hech bo'lmasa asl matn o'qish mumkin/mazmunli.
+
+MUHIM (yana bir tuzatilgan xato): MyMemory xizmati Google'dan farqli o'laroq oddiy
+"uz" kabi qisqa til kodini QABUL QILMAYDI — u "uz-UZ" kabi to'liq (mintaqa bilan
+birga) kodni talab qiladi, aks holda "No support for the provided language" xatosi
+bilan darhol rad etadi (hatto tarmoqqa chiqmasdan). Shuning uchun MyMemory'ga
+maxsus "uz-UZ" ishlatiladi (Google uchun esa oddiy "uz" yetarli va to'g'ri).
+
+MUHIM (uchinchi tuzatilgan xato): MyMemory manba tili sifatida "auto"ni ham QABUL
+QILMAYDI — lekin bu daf'atan (kod darajasida) xato bermaydi, balki so'rovni
+serverga yuborib, keyin "'AUTO' IS AN INVALID SOURCE LANGUAGE ..." degan xato
+matnini xuddi TARJIMA natijasi sifatida qaytaradi! Bu — birinchi (Google xato-sahifa)
+muammosi bilan bir xil turkumdagi xato, faqat boshqa xizmatda. Shuning uchun MyMemory
+uchun manba tili doim ANIQ "en-GB" (ingliz) qilib beriladi — bizning deyarli barcha
+tarjima manbalarimiz (Wikipedia, CoinDesk, Cointelegraph, BBC) shunday bo'lgani uchun
+bu to'g'ri standart. (Futbol botining o'zbekcha Google News manbasi — kamdan-kam
+holat — MyMemory FAQAT Google butunlay ishlamay qolganda, zaxira sifatida chaqirilgani
+uchun, kamdan-kam holatdagi noto'g'ri manba-til taxmini qabul qilingan.)
+MUHIM (to'rtinchi tuzatilgan xato): MyMemory xizmati bitta so'rovda FAQAT 500
+belgigacha matnni qabul qiladi — uzunroq matn (masalan futbolchi sharhi/trivia uchun
+Wikipedia'dan olingan 3-4 gapli parcha, ba'zan 500 belgidan oshadi) "Text length need
+to be between 0 and 500 characters" xatosi bilan BUTUNLAY rad etiladi. Shuning uchun
+uzun matnlar avval ~450 belgidan oshmaydigan gap-bo'laklarga (jumla chegaralaridan)
+bo'lib, HAR BIRI alohida tarjima qilinib, keyin qayta birlashtiriladi.
+"""
+import logging
+
+logger = logging.getLogger(__name__)
+
+# MyMemory'ning bitta so'rovdagi qattiq belgi chegarasi (500) dan xavfsiz pastroq —
+# jumla oxirida to'xtash uchun ozgina joy qoldiradi.
+_MYMEMORY_CHUNK_LIMIT = 450
+
+# Google'ning yoki MyMemory'ning xato-javobiga xos, tarjima natijasida UMUMAN
+# uchramasligi kerak bo'lgan iboralar — shulardan biri topilsa, natija chin tarjima
+# emas, xizmatning o'z xato-xabari ekani aniq.
+_ERROR_SIGNATURES = (
+    "error 500", "error 404", "server error", "that's an error",
+    "there was an error", "please try again later", "that's all we know",
+    "<html", "<!doctype", "bad gateway", "service unavailable",
+    "invalid source language", "invalid target language", "is an invalid",
+    "langpair", "no support for the provided language",
+)
+
+
+def _looks_like_error_page(text: str) -> bool:
+    lowered = text.lower()
+    return any(sig in lowered for sig in _ERROR_SIGNATURES)
+
+
+def _try_backend(backend_name: str, make_translator, text: str) -> str | None:
+    try:
+        translated = make_translator().translate(text)
+    except Exception as exc:  # noqa: BLE001 - keyingi zaxira xizmatga o'tish uchun
+        logger.warning("%s tarjima xizmatida xatolik: %s", backend_name, exc)
+        return None
+
+    if not translated or not translated.strip():
+        logger.warning("%s tarjima xizmati bo'sh natija qaytardi.", backend_name)
+        return None
+
+    if _looks_like_error_page(translated):
+        logger.warning(
+            "%s tarjima xizmati xato-sahifaga o'xshash natija qaytardi (chin tarjima emas), rad etildi: %r",
+            backend_name, translated[:120],
+        )
+        return None
+
+    return translated
+
+
+def _split_into_chunks(text: str, limit: int) -> list[str]:
+    """Matnni `limit` belgidan oshmaydigan bo'laklarga, imkon qadar JUMLA
+    chegaralaridan bo'lib beradi (tarjima sifatini saqlash uchun so'z o'rtasidan
+    kesishdan qochiladi). Agar bitta jumlaning o'zi ham limitdan uzun bo'lsa
+    (kamdan-kam), so'z chegarasidan kesiladi — hech qachon limitdan oshib ketmaydi."""
+    if len(text) <= limit:
+        return [text]
+
+    raw_sentences = text.replace("! ", "!|").replace("? ", "?|").replace(". ", ".|").split("|")
+    chunks: list[str] = []
+    current = ""
+    for sentence in raw_sentences:
+        candidate = f"{current} {sentence}".strip() if current else sentence
+        if len(candidate) <= limit:
+            current = candidate
+        else:
+            if current:
+                chunks.append(current)
+            current = sentence
+    if current:
+        chunks.append(current)
+
+    final_chunks: list[str] = []
+    for chunk in chunks:
+        while len(chunk) > limit:
+            cut = chunk.rfind(" ", 0, limit)
+            if cut <= 0:
+                cut = limit
+            final_chunks.append(chunk[:cut].strip())
+            chunk = chunk[cut:].strip()
+        if chunk:
+            final_chunks.append(chunk)
+    return final_chunks
+
+
+def _try_mymemory_chunked(text: str):
+    """MyMemory 500 belgidan uzun matnni butunlay rad etgani uchun (haqiqiy voqeada
+    aniqlangan xato — pastdagi modul docstring'iga qarang), uzun matnni bo'laklarga
+    bo'lib, har birini alohida tarjima qilib, natijalarni birlashtiradi. Bo'laklardan
+    BIRORTASI ham muvaffaqiyatsiz bo'lsa, butun natija rad etiladi (aralash tilda —
+    yarim o'zbekcha, yarim inglizcha — post chiqib ketmasligi uchun)."""
+    from deep_translator import MyMemoryTranslator
+
+    chunks = _split_into_chunks(text, _MYMEMORY_CHUNK_LIMIT)
+    translated_chunks = []
+    for chunk in chunks:
+        result = _try_backend("MyMemory", lambda c=chunk: MyMemoryTranslator(source="en-GB", target="uz-UZ"), chunk)
+        if result is None:
+            return None
+        translated_chunks.append(result)
+    return " ".join(translated_chunks)
+
+
+def translate_to_uzbek(text: str) -> str:
+    """Matnni o'zbek tiliga tarjima qiladi. Avval Google, muvaffaqiyatsiz/shubhali
+    bo'lsa MyMemory sinaladi (kerak bo'lsa bo'laklarga bo'lib). Ikkalasi ham
+    muvaffaqiyatsiz bo'lsa, asl matn qaytariladi (botni to'xtatmaslik uchun).
+
+    Manba tili "auto" (avtomatik aniqlash) — QATTIQ "en" (ingliz) emas, chunki bu
+    funksiya turli manbalardan kelgan matnlarga qo'llaniladi: ba'zilari doim ingliz
+    tilida (masalan Wikipedia), lekin ba'zilari (masalan futbol botining ba'zi
+    yangilik manbalari) allaqachon o'zbek tilida bo'lishi mumkin."""
+    from deep_translator import GoogleTranslator
+
+    result = _try_backend("Google Translate", lambda: GoogleTranslator(source="auto", target="uz"), text)
+    if result:
+        return result
+
+    result = _try_mymemory_chunked(text)
+    if result:
+        logger.info("Google muvaffaqiyatsiz bo'lgani uchun MyMemory (zaxira xizmat) orqali tarjima qilindi.")
+        return result
+
+    logger.warning("Barcha tarjima xizmatlari muvaffaqiyatsiz bo'ldi, asl (tarjima qilinmagan) matn ishlatiladi.")
+    return text
