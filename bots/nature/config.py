@@ -112,6 +112,23 @@ def source_order() -> list[str]:
     return order or list(DEFAULT_SOURCE_ORDER)
 
 
+def wikipedia_discovery_enabled() -> bool:
+    """True bo'lsa (standart), bot Wikipedia orqali minglab qo'shimcha joy
+    nomini avtomatik kashf qiladi (topics.py) — bu ko'proq xilma-xillik beradi,
+    lekin Wikipedia'ning to'liq matn qidiruvi ba'zan tabiatga aloqasi yo'q
+    natija (masalan tarixiy voqea) qaytarishi mumkin (filtrlangan bo'lsa ham).
+
+    NATURE_ENABLE_WIKI_DISCOVERY=false qilib qo'yilsa, Wikipedia BUTUNLAY
+    chetlab o'tiladi — bot FAQAT places.py'dagi qo'lda tekshirilgan 69 ta
+    haqiqiy joy nomi bilan ishlaydi (bular ham to'g'ridan-to'g'ri Pixabay/
+    Pexels'dan qidiriladi — Wikipedia hech qachon rasm/video BERMAYDI, faqat
+    QIDIRUV SO'ZI/JOY NOMI manbai bo'lib xizmat qiladi). Bu kamroq xilma-xillik
+    degani, lekin tabiatga aloqasi yo'q mavzu postlanish ehtimoli NOLGA
+    tushadi, chunki 69 ta joyning har biri qo'lda tanlangan haqiqiy tabiat
+    manzili."""
+    return os.getenv("NATURE_ENABLE_WIKI_DISCOVERY", "true").strip().lower() != "false"
+
+
 def allowed_topics() -> list[str] | None:
     """Foydalanuvchi qat'iy mavzular ro'yxati bersa (NATURE_TOPICS=ocean,forest,
     mountain — vergul bilan), bot Wikipedia orqali FAQAT shu kalit so'zlar

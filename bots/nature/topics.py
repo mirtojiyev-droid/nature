@@ -15,7 +15,7 @@ from pathlib import Path
 
 import requests
 
-from .config import allowed_topics
+from .config import allowed_topics, wikipedia_discovery_enabled
 from shared.data_dir import get_data_dir
 
 logger = logging.getLogger(__name__)
@@ -52,6 +52,31 @@ _EXCLUDE_PATTERNS = re.compile(
     re.IGNORECASE,
 )
 
+# MUHIM (haqiqiy voqeada aniqlangan yangi xato — tabiatga aloqasi yo'q mavzular
+# kanalga post qilinishi): yuqoridagi filtr FAQAT qavs ichidagi holatlarni
+# (masalan "(2005 film)") ushlaydi. Lekin Wikipedia'ning to'liq matn qidiruvi
+# ("srsearch") sarlavhaning O'ZIDA qidiruv so'zi (masalan "valley") uchrasa,
+# mazmuni umuman tabiiy joy bo'lmagan maqolalarni ham qaytaradi — masalan
+# "valley" so'zi bo'yicha qidirilganda "Indus Valley Civilisation" (qadimgi
+# sivilizatsiya, tarixiy-arxeologik mavzu, tabiat joyi EMAS) qaytib, kanalga
+# noto'g'ri mazmun (odamlar, tarix, urush haqida) post qilingan edi. Endi
+# sarlavhaning ISTALGAN joyida (nafaqat qavs ichida) shu kabi "inson/tarix/
+# siyosat" mavzusiga xos so'z uchrasa, butun natija rad etiladi — bunday
+# so'zlar haqiqiy tabiiy geografik joy nomlarida deyarli hech qachon
+# uchramaydi (masalan hech qanday haqiqiy vodiy/g'or/orolning nomida
+# "civilisation" yoki "empire" so'zi bo'lmaydi).
+_NON_NATURE_TOPIC_RE = re.compile(
+    r"\b(civilisation|civilization|empire|kingdom|dynasty|war|battle|massacre|"
+    r"genocide|revolution|uprising|rebellion|insurgency|treaty|republic|colony|"
+    r"colonial|conflict|coup|siege|invasion|election|referendum|parliament|"
+    r"constitution|corporation|company|university|college|stadium|airport|"
+    r"railway|railroad|museum|dictatorship|monarchy|regime|regiment|battalion|"
+    r"army|military|president|minister|politician|footballer|athlete|actor|"
+    r"actress|musician|singer|rapper|celebrity|records|record label|"
+    r"league|tournament|championship|festival)\b",
+    re.IGNORECASE,
+)
+
 
 def _is_valid_title(title: str) -> bool:
     if len(title) < 3:
@@ -59,6 +84,8 @@ def _is_valid_title(title: str) -> bool:
     if title.lower().startswith("list of"):
         return False
     if _EXCLUDE_PATTERNS.search(title):
+        return False
+    if _NON_NATURE_TOPIC_RE.search(title):
         return False
     return True
 
@@ -179,6 +206,17 @@ def get_topic_pool(seed_places: list[str] | None = None) -> list[str]:
     shu sababdan to'xtamasligi kerak."""
     global _last_category_map
     seed = seed_places or []
+
+    if not wikipedia_discovery_enabled():
+        # Foydalanuvchi Wikipedia'ni butunlay o'chirgan (NATURE_ENABLE_WIKI_DISCOVERY=false)
+        # — Wikipedia'ga UMUMAN so'rov yubormaymiz, faqat places.py'dagi qo'lda
+        # tekshirilgan joylar bilan ishlaymiz. _last_category_map bo'sh qoladi (muammo
+        # emas: bu faqat "general" qirrasi uchun zaxira so'z tanlashda ishlatiladi,
+        # places.py'dagi joy nomlarining o'zi allaqachon Pixabay uchun yaxshi so'rov).
+        logger.info("Wikipedia orqali joy kashfiyoti o'chirilgan (NATURE_ENABLE_WIKI_DISCOVERY=false) - faqat %d ta tayyor joy ishlatiladi.", len(seed))
+        _last_category_map = {}
+        return sorted(set(seed))
+
     active_terms = _active_search_terms()
 
     cache = _load_cache()
