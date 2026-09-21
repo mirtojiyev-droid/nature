@@ -91,8 +91,24 @@ def _fallback_dimensions() -> list[int]:
     return tiers or [cap]
 
 
+# MUHIM (haqiqiy voqeada sinovda aniqlangan ffmpeg xatosi): libx264 (yuv420p bilan)
+# kenglik VA balandlik albatta JUFT son bo'lishini talab qiladi. `force_original_
+# aspect_ratio=decrease` bilan nisbatni saqlab hisoblangan tomon esa (masalan
+# 1080x1920 manbani 720x720 chegaraga moslashtirishda: 720 * 1080/1920 = 405) ko'pincha
+# TOQ son chiqib qoladi — bu holatda ffmpeg "width/height not divisible by 2" xatosi
+# bilan BUTUNLAY qulab tushadi ("Error while filtering: Generic error in an external
+# library", natija fayli 0 baytli chiqadi). Buni oldini olish uchun scale filtridan
+# keyin qo'shimcha ikkinchi `scale=trunc(iw/2)*2:trunc(ih/2)*2` bosqichi qo'shiladi —
+# bu HAR DOIM eng yaqin pastroq juft songa yaxlitlaydi (ko'rinishga sezilarli ta'sir
+# qilmaydigan, ko'pi bilan 1px farq).
+_EVEN_DIMENSIONS_FILTER = "scale=trunc(iw/2)*2:trunc(ih/2)*2"
+
+
 def _scale_filter(max_dimension: int) -> str:
-    return f"scale='min({max_dimension},iw)':'min({max_dimension},ih)':force_original_aspect_ratio=decrease"
+    return (
+        f"scale='min({max_dimension},iw)':'min({max_dimension},ih)':force_original_aspect_ratio=decrease,"
+        f"{_EVEN_DIMENSIONS_FILTER}"
+    )
 
 
 def _crop_to_vertical_filter(max_dimension: int) -> str:
@@ -106,7 +122,8 @@ def _crop_to_vertical_filter(max_dimension: int) -> str:
     kenglik bo'yicha kesib, keyin belgilangan o'lchamgacha kattalashtiriladi."""
     return (
         f"crop='min(iw,ih*9/16)':'min(ih,iw*16/9)',"
-        f"scale='min({max_dimension},iw)':'min({max_dimension*16//9},ih)':force_original_aspect_ratio=decrease"
+        f"scale='min({max_dimension},iw)':'min({max_dimension*16//9},ih)':force_original_aspect_ratio=decrease,"
+        f"{_EVEN_DIMENSIONS_FILTER}"
     )
 
 

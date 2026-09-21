@@ -99,13 +99,11 @@ class TelegramPoster:
         API'ning o'zi qaytargan xato EMAS) shuncha martagacha qayta uriladi, orasida
         qisqa kutish bilan — katta video fayllarni sekin/beqaror tarmoqda yuklashda
         foydali (post_video_file shundan foydalanadi)."""
-        last_exc = None
         for attempt in range(1, max_retries + 1):
             try:
                 timeout = 180 if files else 60
                 resp = requests.post(self._url(method), data=payload, files=files, timeout=timeout)
             except requests.RequestException as exc:
-                last_exc = exc
                 if attempt < max_retries:
                     logger.warning("Telegram %s tarmoq xatoligi (%d/%d-urinish), qayta urinilmoqda: %s", method, attempt, max_retries, exc)
                     time.sleep(3)
