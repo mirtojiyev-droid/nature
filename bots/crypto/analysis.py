@@ -81,6 +81,15 @@ def get_top_movers(pairs: list[dict], top_n: int) -> tuple[list[dict], list[dict
     return gainers, losers
 
 
+def enrich_with_rsi(coins: list[dict], klines_map: dict) -> list[dict]:
+    enriched = []
+    for coin in coins:
+        k = klines_map.get(coin["symbol"])
+        rsi = calculate_rsi(k["closes"]) if k else None
+        enriched.append({**coin, "rsi": rsi, "rsi_note": rsi_explanation(rsi)})
+    return enriched
+
+
 def signed_num(value: float, decimals: int) -> str:
     v = f"{value:.{decimals}f}"
     return f"+{v}" if value >= 0 else v

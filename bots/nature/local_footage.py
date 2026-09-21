@@ -2,11 +2,11 @@
 Foydalanuvchi o'zi (masalan Shutterstock, Envato Elements, iStock/Getty, Storyblocks,
 Motion Array kabi pullik obuna asosidagi kutubxonalardan qonuniy yuklab olgan) tayyorlagan
 premium/sinematik video kliplarni shu modul boshqaradigan `localfootage/` papkasiga
-qo'ysa, bot ularni bepul avtomatik manbalardan (Pixabay/Wikimedia Commons) OLDIN,
+qo'ysa, bot ularni bepul avtomatik manbalardan (Pexels/Pixabay/Wikimedia Commons) OLDIN,
 ENG BIRINCHI navbatda ishlatishga harakat qiladi.
 
-Nega bu kutubxonalar to'g'ridan-to'g'ri (Pixabay/Wikimedia Commons kabi) botga
-ulanmagan: ular barchasi pullik obuna/litsenziya asosida ishlaydi va Pixabay'dan
+Nega bu kutubxonalar to'g'ridan-to'g'ri (Pexels/Pixabay/Wikimedia Commons kabi) botga
+ulanmagan: ular barchasi pullik obuna/litsenziya asosida ishlaydi va Pexels/Pixabay'dan
 farqli o'laroq, ochiq, bepul, o'z-o'zidan ro'yxatdan o'tiladigan qidiruv+yuklab olish
 API'siga ega emas — API olish uchun odatda alohida biznes-hamkorlik arizasi kerak, va
 yuklab olish har doim pullik. Bundan ham muhimi: ularning litsenziya shartlari kontentni
@@ -75,7 +75,7 @@ def find_local_video(variants: list[str], prefer_vertical: bool = True) -> Path 
 
     music/ papkasidagi kabi — bu papka bo'sh bo'lsa (yoki hech qanday fayl nomi joriy
     so'rovlarga mos kelmasa), None qaytadi va chaqiruvchi (main.py) odatdagidek
-    Pixabay/Wikimedia Commons kaskadiga o'tadi."""
+    Pexels/Pixabay/Wikimedia Commons kaskadiga o'tadi."""
     videos = _list_local_videos()
     if not videos:
         return None

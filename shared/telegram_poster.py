@@ -4,7 +4,7 @@ botlarining barchasi shu moduldan foydalanadi (avval har biri o'zining alohida
 nusxasiga ega edi; endi bitta joyda, kod takrorlanmaydi).
 
 Qo'llab-quvvatlaydi:
-- Tashqi URL orqali rasm/video joylash (masalan Pixabay linki) — Telegram
+- Tashqi URL orqali rasm/video joylash (masalan Pexels/Pixabay linki) — Telegram
   o'zi URL'dan yuklab oladi.
 - Xotiradagi bayt (bytes) — masalan Pillow bilan chizilgan karta rasmi — to'g'ridan-to'g'ri
   multipart orqali yuklab joylash (diskka vaqtincha yozmasdan).
@@ -135,7 +135,7 @@ class TelegramPoster:
     # ------------------------------------------------------------------
     def post_photo(self, photo_url: str, caption: str) -> bool:
         """Tashqi URL'dagi rasmni joylaydi (Telegram o'zi URL'dan yuklab oladi) —
-        Pixabay/Wikimedia Commons kabi manbalardan kelgan rasm uchun."""
+        Pexels/Pixabay/Wikimedia Commons kabi manbalardan kelgan rasm uchun."""
         caption = self._trim(caption, MAX_CAPTION_LENGTH)
         return self._send(
             "sendPhoto",

@@ -8,36 +8,31 @@ alohida serverga pul to'lash shart emas.
 
 Har bir bot (`bots/nature`, `bots/crypto`, `bots/football`) TO'LIQ mustaqil:
 o'zining bot tokeni, kanal ID'si va sozlamalariga ega (.env'da alohida prefikslar
-bilan). Bittasi xato bersa ham (masalan CoinGecko vaqtincha rate-limit qilsa),
-boshqalari ta'sirlanmaydi — har bir "job" o'zining try/except ichida ishlaydi.
+bilan). Bittasi xato bersa ham (masalan Binance vaqtincha ishlamasa), boshqalari
+ta'sirlanmaydi — har bir "job" o'zining try/except ichida ishlaydi.
 
-MUHIM (ip-oqim/threading va operativ xotira haqida): har bir bot o'z ALOHIDA
+MUHIM (ip-oqim/threading va operativ xotira haqide): har bir bot o'z ALOHIDA
 ip-oqimida (thread) ishga tushiriladi, bittasi (masalan tabiat boti ffmpeg bilan)
 bir necha daqiqa band bo'lishi mumkin, lekin bu ikkinchisini (masalan kripto botini,
 aynan shu daqiqada post qilishi kerak bo'lgan) KECHIKTIRMAYDI.
 
-LEKIN: agar bir nechta bot BIR VAQTDA ishlasa, ularning operativ xotira sarfi
-QO'SHILIB ketadi — bu, ayniqsa Render/Railway kabi platformalarning arzon
-tariflarida (odatda 512MB-1GB), "out of memory" xatosiga olib kelishi mumkin
-(ffmpeg 4K video qayta kodlashda o'zi bir necha yuz MB talab qilishi mumkin).
-Shuning uchun `HUB_MAX_CONCURRENT_JOBS` (.env) orqali kripto/futbol BIR VAQTDA
-nechta bo'lib ishlashi mumkinligini cheklaymiz (standart: 1 — birin-ketin).
-
-MUHIM (haqiqiy voqeada aniqlangan va tuzatilgan xato): tabiat boti bu umumiy
-cheklovga KIRMAYDI — u O'ZINING alohida ruxsatiga (semaphore) ega, hech qachon
-kripto/futbolni kutmaydi. Sabab: tabiat botining kunlik jadvali ANIQ VAQTGA
-bog'liq (masalan 06:00 — quyosh chiqishi), kripto esa CoinGecko rate-limit
-tufayli 20-30+ daqiqa davom etishi mumkin — agar bitta umumiy ruxsat bo'lganida,
-tabiat boti shu vaqt ichida jim kutib, jadvaldagi vaqtini o'tkazib yuborishi
-mumkin edi (bu logda ham ko'rinmasdi, chunki "ishga tushmoqda" logi ruxsat
-OLINGANDAN keyin chiqadi). Shuning uchun tabiat — har doim DARHOL, hech kimni
-kutmasdan ishga tushadi; faqat kripto/futbol o'zaro navbatlashadi.
-
-Bundan tashqari, har bir bot uchun alohida qulf (fcntl.flock, jarayonlar ORASIDA
-ham ishlaydigan) bor — shu bot allaqachon ishlab turgan bo'lsa (masalan Render
-qayta deploy qilib, eski/yangi jarayon bir zumga bir vaqtda ishlab tursa), shu bot
-safar shunchaki o'tkazib yuboriladi (ikkita nusxa bir xil faylni ustma-ust yozib
-qo'ymasligi uchun).
+LEKIN: agar bir nechta bot BIR VAQTDA ishlasa (masalan hub ishga tushgan zahoti, yoki
+ikkita botning jadvali tasodifan bir xil daqiqaga to'g'ri kelib qolsa), ularning
+operativ xotira sarfi QO'SHILIB ketadi — bu, ayniqsa Render/Railway kabi platformalarning
+arzon tariflarida (odatda 512MB-1GB), "out of memory" xatosiga olib kelishi mumkin
+(ffmpeg 4K video qayta kodlashda o'zi bir necha yuz
+MB talab qilishi mumkin). Shuning uchun `HUB_MAX_CONCURRENT_JOBS` (.env) orqali BIR
+VAQTDA nechta bot ishlashi mumkinligini cheklaymiz:
+  - Standart (va kam xotirali serverlar uchun tavsiya etiladigan) qiymat: 1 — ya'ni
+    botlar HAR DOIM birin-ketin ishlaydi, hech qachon bir vaqtda ishlamaydi (xavfsiz,
+    lekin bittasi band bo'lsa boshqasi biroz kutadi).
+  - Agar serveringizda operativ xotira yetarli bo'lsa (masalan 2GB+), buni 2 yoki 3'ga
+    oshirib, botlarning bir-birini kutmasdan parallel ishlashiga ruxsat berishingiz
+    mumkin (tezroq, lekin xotira cho'qqisi balandroq).
+Bundan tashqari, har bir bot uchun alohida qulf (Lock) ham bor — shu bot allaqachon
+ishlab turgan bo'lsa (masalan interval juda qisqa qilib qo'yilsa-yu, oldingi ishga
+tushirish hali tugamagan bo'lsa), shu bot safar shunchaki o'tkazib yuboriladi (o'zining
+ikkita nusxasi bir vaqtda ishlab, bir xil faylni ustma-ust yozib qo'ymasligi uchun).
 
 Ishga tushirish: `python main.py` (bu papkadan, hub root'idan). Doimiy (24/7) ishlashi
 uchun `bot-hub.service` (systemd) orqali joylang — README.md'ga qarang.
@@ -71,7 +66,6 @@ from bots.crypto import run_once as run_crypto  # noqa: E402
 from bots.football import run_once as run_football  # noqa: E402
 from bots.nature import run_once as run_nature  # noqa: E402
 from bots.nature.schedule_config import NATURE_DAILY_SCHEDULE  # noqa: E402
-from shared.data_dir import get_data_dir  # noqa: E402
 
 
 def _env_int(name: str, default: int) -> int:
@@ -79,28 +73,6 @@ def _env_int(name: str, default: int) -> int:
         return int(os.getenv(name, default))
     except (TypeError, ValueError):
         return default
-
-
-# MUHIM (foydalanuvchi bilan aniqlangan muammo): Render (va aksariyat bulut
-# serverlari) soat mintaqasi sifatida UTC'ni ishlatadi — `schedule` kutubxonasi ham,
-# `datetime.now()` ham serverning O'ZI ko'radigan (ya'ni UTC) vaqtni ishlatadi.
-# `bots/nature/schedule_config.py`dagi vaqtlar esa ATAYLAB O'ZBEKISTON MAHALLIY
-# VAQTIDA yozilgan (masalan "18:00" — mahalliy kechqurun, dengiz/yomg'ir kabi
-# tinchlantiruvchi kontent uchun mo'ljallangan) — bu ikkisi orasidagi farq
-# NATURE_TZ_OFFSET_HOURS orqali tuzatiladi (standart: 5 — O'zbekiston UTC+5).
-# Agar serveringiz boshqa mintaqada joylashgan bo'lsa yoki hisob-kitobda xato
-# bo'lsa, shu qiymatni .env'da osongina o'zgartirishingiz mumkin.
-NATURE_TZ_OFFSET_HOURS = _env_int("NATURE_TZ_OFFSET_HOURS", 5)
-
-
-def _shift_time_str(time_str: str, offset_hours: int) -> str:
-    """"HH:MM" formatidagi MAHALLIY vaqtni serverning (UTC) soat ko'rsatkichiga
-    o'tkazadi — masalan mahalliy "18:00" (UTC+5 bilan) serverda "13:00" bo'lib
-    ro'yxatdan o'tkaziladi. Kun chegarasidan oshib/kamayib ketishi (masalan mahalliy
-    "02:00" UTC+5'da avvalgi kunning "21:00"si bo'ladi) avtomatik hisobga olinadi."""
-    h, m = map(int, time_str.split(":"))
-    total_minutes = (h * 60 + m - offset_hours * 60) % (24 * 60)
-    return f"{total_minutes // 60:02d}:{total_minutes % 60:02d}"
 
 
 # Har bir bot uchun qulf fayli shu papkaga yoziladi (fcntl.flock — jarayonlar
@@ -142,9 +114,7 @@ _BOT_SEMAPHORES = {"tabiat": _nature_semaphore}
 # ishlayapti" bo'lib ko'rinishiga olib kelardi. Shu faylga yozib qo'yish orqali, qayta
 # ishga tushgandan keyin ham hub "oxirgi marta qachon ishlaganini" biladi va shunga
 # yarasha to'g'ri vaqtda keyingi ishga tushirishni rejalashtiradi.
-# MUHIM: HUB_DATA_DIR (.env) berilsa, bu fayl Render Persistent Disk'ga yoziladi va
-# DEPLOY QILINGANDA HAM saqlanib qoladi — shared/data_dir.py'ga qarang.
-_SCHEDULE_STATE_FILE = get_data_dir("hub", Path(__file__).parent) / "hub_schedule_state.json"
+_SCHEDULE_STATE_FILE = Path(__file__).parent / "hub_schedule_state.json"
 
 
 def _load_last_run_times() -> dict:
@@ -193,6 +163,10 @@ def job(name: str, fn) -> None:
         lock_file.close()
         return
     try:
+        # Ishga tushirish DARHOL (fn() hali navbatda kutayotgan bo'lsa ham) qayd etiladi
+        # — schedule kutubxonasining o'zi ham "last_run"ni aynan shu daqiqada (chaqiruv
+        # boshida, tugashini kutmasdan) belgilaydi, shu bilan izchil turish uchun.
+        _save_last_run_time(name)
         # Har bir bot O'ZIGA mos semaforni ishlatadi — tabiat boti ALOHIDA (hech qachon
         # kripto/futbolni kutmaydi), kripto/futbol esa umumiy semaforni bo'lishadi
         # (HUB_MAX_CONCURRENT_JOBS orqali cheklanadi). Batafsil sabab uchun yuqoridagi
@@ -207,28 +181,6 @@ def job(name: str, fn) -> None:
         try:
             logger.info("[%s] ishga tushmoqda...", name)
             fn()
-            # MUHIM (haqiqiy voqeada aniqlangan va tuzatilgan xato — "tabiat boti bir
-            # marta ishga tushib, qaytib ishga tushmadi"): AVVAL bu qator try blokining
-            # ENG BOSHIDA, fn() chaqirilishidan OLDIN turardi — "fn() hali navbatda
-            # kutayotgan bo'lsa ham darhol qayd etiladi" degan (o'zi to'g'ri) niyat
-            # bilan. LEKIN buning YOMON tomoni bor edi: agar jarayon fn() ICHIDA
-            # (masalan tabiat botining og'ir ffmpeg/Wikipedia bosqichida, xotira
-            # yetishmasligi tufayli Render tomonidan MAJBURAN o'chirilsa — bu esa
-            # tabiat boti endi kripto/futbolni kutmagani uchun ular bilan bir vaqtda
-            # ishlab, umumiy xotira sarfini oshirib yuborishi orqali yanada
-            # ehtimolroq bo'lib qolgan edi), bu "ishga tushirilgan vaqt" ALLAQACHON
-            # yozilgan bo'lardi — garchi HECH NARSA post qilinmagan, hatto fn() hali
-            # bajarilayotgan bo'lsa ham. Jarayon qayta ishga tushganda, yuqoridagi
-            # "o'tkazib yuborilgan postni tiklash" mexanizmi buni "yaqinda muvaffaqiyatli
-            # ishlagan" deb noto'g'ri xulosa qilib, QAYTA URINMASDAN navbatdagi
-            # jadval vaqtigacha jim kutardi — agar xuddi shu vaziyat (masalan
-            # kripto bilan bir vaqtga to'g'ri kelish) takrorlansa, bot HECH QACHON
-            # muvaffaqiyatli yakunlay olmay qolishi mumkin edi. Endi bu qator FAQAT
-            # fn() TO'LIQ, MUVAFFAQIYATLI yakunlangandan KEYIN yoziladi — shuning
-            # uchun yarim-bajarilgan/kesilgan urinish hech qachon "muvaffaqiyatli
-            # o'tgan" deb noto'g'ri hisoblanmaydi, va qayta ishga tushganda albatta
-            # qaytadan (to'g'ri) urinib ko'riladi.
-            _save_last_run_time(name)
         finally:
             sem.release()
     except Exception:  # noqa: BLE001 - hub hech qachon shu sababdan to'xtamasligi kerak
@@ -245,38 +197,6 @@ def threaded_job(name: str, fn) -> None:
     band bo'lib qolsa ham (masalan tabiat boti ffmpeg bilan), scheduler'ning asosiy
     sikli (va shu bilan boshqa botlarning o'z vaqtida ishga tushishi) bloklanmaydi."""
     threading.Thread(target=job, args=(name, fn), name=f"bot-{name}", daemon=True).start()
-
-
-# MUHIM (haqiqiy voqeada aniqlangan OOM-qulash sikli tuzatildi): hub HAR SAFAR
-# qayta ishga tushganda (Render qayta deploy yoki xotira sababli avtomatik
-# restart), BARCHA botlar ("darhol ishga tushirish" mantig'i orqali) deyarli BIR
-# VAQTDA ishga tushirilardi. Agar bu restart aynan xotira yetishmasligi (OOM)
-# tufayli bo'lsa, natija — CHEKSIZ SIKL edi: qayta ishga tushish -> barcha botlar
-# darhol, bir vaqtda ishga tushadi -> operativ xotira yana chegaradan oshadi ->
-# yana OOM -> yana restart, va h.k. — tashqaridan "bot bir marta ishga tushadi,
-# keyin umuman ishlamay qoladi" bo'lib ko'rinadi. Bundan tashqari
-# shared/resource_guard.py orqali ffmpeg (tabiat) va PIL karta chizish (kripto)
-# hech qachon bir vaqtda ishlamaydi — lekin ular hali ham BIR VAQTDA boshlanib,
-# navbatda kutishi mumkin, bu esa yana ikkalasining boshqa (tarmoq so'rovi)
-# bosqichlari bilan qo'shilib xotirani oshirib yuborishi mumkin. Shuning uchun
-# kripto/futbolning HUB ISHGA TUSHGANDAGI "darhol ishga tushirish" chaqiruvi
-# `HUB_STARTUP_STAGGER_SECONDS` (standart 60s) kechiktiriladi — tabiat boti esa
-# ATAYLAB kechiktirilmaydi (uning kunlik jadvali aniq vaqtga bog'liq).
-_STARTUP_STAGGER_SECONDS = max(0, _env_int("HUB_STARTUP_STAGGER_SECONDS", 60))
-
-
-def staggered_threaded_job(name: str, fn, delay_seconds: float) -> None:
-    """`threaded_job`ning kechiktirilgan versiyasi — hub ENDI ishga tushgan
-    paytdagi "darhol ishga tushirish" chaqiruvlari uchun (rejalashtirilgan,
-    kelajakdagi `schedule.every(...)` chaqiruvlari uchun EMAS — ular allaqachon
-    o'zining vaqtida ishlaydi). `delay_seconds=0` bo'lsa, oddiy `threaded_job`
-    bilan bir xil (kechikishsiz)."""
-    if delay_seconds <= 0:
-        threaded_job(name, fn)
-        return
-    timer = threading.Timer(delay_seconds, threaded_job, args=(name, fn))
-    timer.daemon = True
-    timer.start()
 
 
 def setup_schedule() -> bool:
@@ -306,56 +226,16 @@ def setup_schedule() -> bool:
         # o'chirib, eski (interval-based) rejimga qaytish uchun .env'da
         # NATURE_USE_DAILY_SCHEDULE=false qiling.
         if name == "tabiat" and os.getenv("NATURE_USE_DAILY_SCHEDULE", "true").lower() == "true":
-            # MUHIM: schedule_config.py'dagi vaqtlar MAHALLIY vaqtda yozilgan, lekin
-            # `schedule` kutubxonasi serverning (UTC) soatini ishlatadi — shuning uchun
-            # ro'yxatdan o'tkazishdan oldin har birini _shift_time_str() bilan UTC'ga
-            # aylantiramiz (NATURE_TZ_OFFSET_HOURS orqali).
-            server_schedule = [
-                (_shift_time_str(t, NATURE_TZ_OFFSET_HOURS), fk) for t, fk in NATURE_DAILY_SCHEDULE
-            ]
-            for server_time_str, facet_key in server_schedule:
-                schedule.every().day.at(server_time_str).do(
+            for time_str, facet_key in NATURE_DAILY_SCHEDULE:
+                schedule.every().day.at(time_str).do(
                     threaded_job, name, lambda fk=facet_key: run_nature(forced_facet_key=fk)
                 )
             scheduled_count += 1
             logger.info(
-                "%s boti KUNLIK jadval bo'yicha ishlaydi (kuniga %d marta, mahalliy vaqt (UTC+%d): %s).",
-                label, len(NATURE_DAILY_SCHEDULE), NATURE_TZ_OFFSET_HOURS,
+                "%s boti KUNLIK jadval bo'yicha ishlaydi (kuniga %d marta: %s).",
+                label, len(NATURE_DAILY_SCHEDULE),
                 ", ".join(f"{t} {k}" for t, k in NATURE_DAILY_SCHEDULE),
             )
-
-            # MUHIM (foydalanuvchi savoli asosida aniqlangan va tuzatilgan kamchilik):
-            # yuqoridagi `schedule.every().day.at(...)` FAQAT KELAJAKDAGI eng yaqin
-            # vaqtni rejalashtiradi. Agar jarayon aynan bir jadval vaqtidan (masalan
-            # 08:00) SAL KEYIN qayta ishga tushsa (Render qayta deploy qildi, yoki
-            # xotira sababli avtomatik restart bo'ldi) va ESKI jarayon 08:00'ni hali
-            # ulgurmagan bo'lsa — bu post hech qachon joylanmasdan, to'g'ridan-to'g'ri
-            # ERTANGI 08:00'gacha "yo'qolib" qolardi (chunki eng yaqin kelajakdagi 08:00
-            # — bu ertaga). Kripto/futbolda bu muammo yo'q edi, chunki ular pastdagi
-            # "yaqinda ishlaganmi" tekshiruvidan o'tadi — lekin tabiat undan oldin
-            # `continue` bilan chiqib ketardi. Endi: bugungi eng so'nggi "o'tib ketgan"
-            # jadval vaqtini topamiz (SERVER/UTC vaqtida, `now_dt` ham server vaqti
-            # bo'lgani uchun), va agar tabiat o'sha vaqtdan beri ISHLAMAGAN bo'lsa
-            # (last_run_times orqali — bu ham diskka yozilgani uchun qayta ishga
-            # tushishlar orasida saqlanadi), DARHOL o'sha vaqtning qirrasi bilan bir
-            # marta (o'tkazib yubormaslik uchun) ishga tushiramiz.
-            now_dt = datetime.now()
-            passed_today = [
-                (datetime.combine(now_dt.date(), datetime.strptime(t, "%H:%M").time()), fk)
-                for t, fk in server_schedule
-                if datetime.combine(now_dt.date(), datetime.strptime(t, "%H:%M").time()) <= now_dt
-            ]
-            if passed_today:
-                latest_slot_dt, latest_facet_key = max(passed_today, key=lambda x: x[0])
-                last = last_run_times.get(name)
-                if last is None or datetime.fromtimestamp(last) < latest_slot_dt:
-                    logger.info(
-                        "  -> %s eng so'nggi jadval vaqti (server/UTC %s, qirra: %s) o'tkazib yuborilgan "
-                        "bo'lishi mumkin (jarayon qayta ishga tushgan) — darhol shu qirra bilan bir marta "
-                        "ishga tushiriladi.",
-                        label, latest_slot_dt.strftime("%H:%M"), latest_facet_key,
-                    )
-                    threaded_job(name, lambda fk=latest_facet_key: run_nature(forced_facet_key=fk))
             continue
 
         interval = _env_int(interval_env, default_interval)
@@ -382,18 +262,7 @@ def setup_schedule() -> bool:
                 label, (now - last) / 60, remaining_min,
             )
         else:
-            # MUHIM: kechiktirilgan holda ishga tushiriladi (yuqoridagi
-            # _STARTUP_STAGGER_SECONDS izohiga qarang) — tabiat botining darhol
-            # (kechikishsiz) ishga tushadigan "catch-up" bosqichi bilan operativ
-            # xotira cho'qqisi bir vaqtga to'g'ri kelib, OOM-qulash siklini
-            # keltirib chiqarmasligi uchun.
-            if _STARTUP_STAGGER_SECONDS > 0:
-                logger.info(
-                    "  -> %s hub ishga tushgach %ds kutib, keyin ishga tushadi (tabiat boti bilan "
-                    "operativ xotira cho'qqisi to'qnashmasligi uchun).",
-                    label, _STARTUP_STAGGER_SECONDS,
-                )
-            staggered_threaded_job(name, fn, _STARTUP_STAGGER_SECONDS)
+            threaded_job(name, fn)
 
     return scheduled_count > 0
 

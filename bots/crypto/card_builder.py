@@ -25,7 +25,6 @@ from PIL import Image, ImageDraw
 
 from shared.canvas import diagonal_gradient, draw_candlestick_chart, draw_pill, draw_soft_glow_rect, draw_triangle, paste_soft_shadow
 from shared.fonts import get_font
-from shared.resource_guard import heavy_operation
 from .analysis import format_volume, rsi_status_short, signed_num
 
 IMG_WIDTH = 1080
@@ -223,16 +222,11 @@ def _draw_card(base: Image.Image, rank: int, symbol: str, pct_value: float,
 
 
 def _render(draw_fn) -> bytes:
-    # MUHIM (OOM-qulash sikli tuzatildi — shared/resource_guard.py'ga qarang):
-    # katta (1080x1620) rasm chizish operativ xotira jihatidan og'ir, shuning
-    # uchun tabiat botining ffmpeg bosqichi bilan BIR VAQTDA ishlamasligi uchun
-    # umumiy "og'ir operatsiya" semafori bilan o'raladi.
-    with heavy_operation("crypto-card"):
-        img = Image.new("RGBA", (IMG_WIDTH, IMG_HEIGHT), PAGE_BG)
-        draw_fn(img)
-        buf = BytesIO()
-        img.convert("RGB").save(buf, format="PNG")
-        return buf.getvalue()
+    img = Image.new("RGBA", (IMG_WIDTH, IMG_HEIGHT), PAGE_BG)
+    draw_fn(img)
+    buf = BytesIO()
+    img.convert("RGB").save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def build_coin_card_image(coin: dict, is_up: bool, rank: int) -> bytes:

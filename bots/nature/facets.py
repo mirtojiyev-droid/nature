@@ -1,7 +1,7 @@
 """
 Bitta (4 soatlik oynadagi) mavzuning (joyning) turli "go'zal go'shalari" — oyna davomida
 bir xil joy haqida bir necha xil qirradan post qilish uchun. Har birida: caption'da
-KO'RINMAYDIGAN (faqat Pixabay qidiruvi uchun ishlatiladigan) inglizcha so'z, va
+KO'RINMAYDIGAN (faqat Pexels/Pixabay qidiruvi uchun ishlatiladigan) inglizcha so'z, va
 shu qirraga xos, qidiruvda kuchli hashteglar ro'yxati.
 
 MUHIM (foydalanuvchi so'rovi bilan o'zgartirilgan): avval caption'da qirra nomi ham
@@ -55,7 +55,7 @@ CHANNEL_HASHTAGS = ["Nature", "naturephotography"]
 
 
 def build_query(base_place: str, facet: dict) -> str:
-    """Joy nomi va qirra bo'yicha Pixabay uchun qidiruv so'zini yasaydi."""
+    """Joy nomi va qirra bo'yicha Pexels uchun qidiruv so'zini yasaydi."""
     if facet["suffix"]:
         return f"{base_place} {facet['suffix']}"
     return base_place
@@ -75,7 +75,7 @@ def build_hashtags(theme: str, facet: dict) -> list[str]:
     return tags
 
 
-def build_query_variants(base_place: str, facet: dict, fallback_category: str | None = None) -> list[str]:
+def build_query_variants(base_place: str, facet: dict) -> list[str]:
     """Eng mosdan eng umumiyga qarab qidiruv variantlari ro'yxatini qaytaradi.
 
     Wikipedia'dan topilgan joy nomlari ko'pincha juda spetsifik bo'ladi (masalan
@@ -89,22 +89,15 @@ def build_query_variants(base_place: str, facet: dict, fallback_category: str | 
     landscape" kabi) so'rov QO'SHILMAYDI. Avvalgi versiyada shunday umumiy so'rov oxirgi
     zaxira sifatida bor edi — natijada hech qanday variant topilmasa, bot mavzuga
     aloqasi yo'q tasodifiy tabiat videosini topib, "moslashtirib" nashr qilib yuborardi.
-
-    `fallback_category` — MUHIM (haqiqiy voqeada aniqlangan muammo tuzatildi):
-    "umumiy manzarasi" qirrasi (bo'sh suffix) uchun avval FAQAT xom joy nomining o'zi
-    qidirilardi (masalan noyob "Khentii Mountains") — bunday noyob nomlar bilan
-    Pixabay'da deyarli HECH QACHON video topilmasdi (kutubxona juda kichik). Endi
-    topics.py bu joy Wikipedia'da QAYSI KATEGORIYADAN (masalan "mountain range")
-    topilganini biladi va shu yerga uzatadi — bu haligacha TEMATIK JIHATDAN TO'G'RI
-    (haqiqatan ham o'sha joy haqida), umuman aloqasiz umumiy so'z emas."""
+    Endi eng oxirgi variant ham hali mavzu bilan bog'liq (kamida qirra so'zi orqali);
+    shu ham topilmasa, main.py o'sha safar postni butunlay o'tkazib yuboradi — bu
+    mavzuga mos kelmaydigan kontent joylashdan ancha yaxshi."""
     variants = []
     if facet["suffix"]:
         variants.append(f"{base_place} {facet['suffix']}")
     variants.append(base_place)
     if facet["suffix"]:
         variants.append(facet["suffix"])
-    elif fallback_category:
-        variants.append(fallback_category)
 
     seen = set()
     unique = []

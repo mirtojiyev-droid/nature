@@ -3,11 +3,11 @@ Topilgan videoni Telegram uchun eng mos formatga (H.264/AAC, mp4) keltiradi va, 
 music/ papkasida trek bo'lsa, fon musiqasi qo'shadi — ikkalasi ham bitta ffmpeg
 chaqiruvida bajariladi.
 
-Nega kodek normalizatsiyasi kerak: Pixabay har doim to'g'ridan-to'g'ri H.264 mp4
+Nega kodek normalizatsiyasi kerak: Pexels/Pixabay har doim to'g'ridan-to'g'ri H.264 mp4
 beradi, lekin Wikimedia Commons (wikimedia_fetcher.py) ko'pincha VP9/webm yoki Theora/ogv
 formatida fayl beradi — bu formatlar barcha Telegram mijozlarida ishonchli ko'rinavermaydi.
 Shuning uchun manba H.264 bo'lmasa, ffmpeg orqali qayta kodlanadi. Manba allaqachon H.264
-bo'lsa VA allaqachon TARGET_MAX_DIMENSION (4K) dan oshmasa (odatiy holat — Pixabay),
+bo'lsa VA allaqachon TARGET_MAX_DIMENSION (4K) dan oshmasa (odatiy holat — Pexels/Pixabay),
 video striim shunchaki nusxalanadi (tezroq, sifat yo'qolmaydi).
 
 SIFAT vs TELEGRAM HAJM CHEGARASI: fetch bosqichida (media_fetcher.py/pixabay_fetcher.py/
@@ -29,8 +29,6 @@ import random
 import shutil
 import subprocess
 from pathlib import Path
-
-from shared.resource_guard import heavy_operation
 
 logger = logging.getLogger(__name__)
 
@@ -80,21 +78,6 @@ def _fallback_dimensions() -> list[int]:
 
 def _scale_filter(max_dimension: int) -> str:
     return f"scale='min({max_dimension},iw)':'min({max_dimension},ih)':force_original_aspect_ratio=decrease"
-
-
-def _crop_to_vertical_filter(max_dimension: int) -> str:
-    """MUHIM (universal manba-orientatsiya qo'llab-quvvatlash uchun qo'shildi):
-    manba video GORIZONTAL (kino/dron uslubida tushirilgan, ko'pchilik Pixabay/
-    Pexels tabiat kliplari shunday) bo'lsa-yu, vertikal (9:16, Stories/Shorts
-    ko'rinishi) chiqish kerak bo'lsa, oddiy `scale` filtri (yon tomonlariga
-    qora chiziq/padding qo'shadi) o'rniga MARKAZDAN KESIB (crop) 9:16 nisbatga
-    keltiradi — natija to'liq ekranni egallaydi, qora chiziqlarsiz. Manba
-    balandligi 9:16 nisbatdan "torroq" (juda keng panorama) bo'lsa, avval
-    kenglik bo'yicha kesib, keyin belgilangan o'lchamgacha kattalashtiriladi."""
-    return (
-        f"crop='min(iw,ih*9/16)':'min(ih,iw*16/9)',"
-        f"scale='min({max_dimension},iw)':'min({max_dimension*16//9},ih)':force_original_aspect_ratio=decrease"
-    )
 
 
 def _first_existing_font(paths: list[str]) -> str | None:
@@ -152,35 +135,13 @@ def ffmpeg_available() -> bool:
     return shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
 
 
-def _is_valid_audio_file(path: Path) -> bool:
-    """`path` haqiqatan ochiladigan, audio oqimiga ega faylmi — tekshiradi. MUHIM
-    (haqiqiy voqeada aniqlangan muammo): foydalanuvchi music/ papkasiga qo'shgan
-    ba'zi fayllar (masalan noodatiy kodlash/buzuq meta-ma'lumot bilan) ffmpeg'ning
-    `-stream_loop` + filtr birikmasida barcha sifat darajalarida ham xato berishiga
-    sabab bo'lgan edi — bitta buzuq musiqa fayli tufayli BUTUN video (barcha 4
-    urinish ham) muvaffaqiyatsiz bo'lib qolardi. Endi bunday fayl OLDINDAN
-    aniqlanadi va o'tkazib yuboriladi (boshqa trek sinaladi, yoki musiqasiz
-    davom etiladi) — bitta buzuq faylning butun videoni "yiqitishi" oldini oladi."""
-    try:
-        result = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(path)],
-            capture_output=True, text=True, timeout=20,
-        )
-        return result.returncode == 0 and "audio" in result.stdout
-    except (subprocess.SubprocessError, OSError):
-        return False
-
-
 def _pick_music_track() -> Path | None:
     if not MUSIC_DIR.exists():
         return None
     tracks = [p for p in MUSIC_DIR.iterdir() if p.suffix.lower() in MUSIC_EXTENSIONS]
-    random.shuffle(tracks)
-    for track in tracks:
-        if _is_valid_audio_file(track):
-            return track
-        logger.warning("Musiqa fayli (%s) buzuq/noto'g'ri formatda ko'rinadi - o'tkazib yuborildi.", track.name)
-    return None
+    if not tracks:
+        return None
+    return random.choice(tracks)
 
 
 def _get_duration_seconds(path: Path) -> float | None:
@@ -221,9 +182,9 @@ def _get_video_codec(path: Path) -> str | None:
 
 def _build_ffmpeg_cmd(video_path: Path, output_path: Path, max_dimension: int, force_reencode: bool,
                        duration: float | None, track: Path | None, crf: int,
-                       overlay_filter: str | None = None, crop_to_vertical: bool = False) -> list[str]:
+                       overlay_filter: str | None = None) -> list[str]:
     if force_reencode:
-        vf = _crop_to_vertical_filter(max_dimension) if crop_to_vertical else _scale_filter(max_dimension)
+        vf = _scale_filter(max_dimension)
         if overlay_filter:
             vf = f"{vf},{overlay_filter}"
         video_args = ["-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-crf", str(crf), "-pix_fmt", "yuv420p"]
@@ -254,8 +215,7 @@ def _build_ffmpeg_cmd(video_path: Path, output_path: Path, max_dimension: int, f
 
 
 def prepare_video_for_posting(video_path: Path, output_path: Path,
-                               location_text: str | None = None, brand_label: str | None = None,
-                               crop_to_vertical: bool = False) -> bool:
+                               location_text: str | None = None, brand_label: str | None = None) -> bool:
     """video_path'dagi videoni Telegram uchun mos H.264/AAC mp4'ga keltiradi (kerak bo'lsa)
     va topilsa fon musiqasi qo'shadi, natijani output_path'ga saqlaydi.
 
@@ -263,12 +223,6 @@ def prepare_video_for_posting(video_path: Path, output_path: Path,
     (yarim shaffof fon + oq matn) brendlash matni bitta ffmpeg bosqichida qo'shiladi —
     alohida ikkinchi qayta kodlash bosqichi KERAK EMAS (samaradorlik uchun muhim).
     `brand_label` berilmasa, `.env`dagi NATURE_BRAND_LABEL yoki standart qiymat ishlatiladi.
-
-    `crop_to_vertical=True` bo'lsa (run.py manba GORIZONTAL ekanini, lekin
-    VERTIKAL chiqish kerakligini aniqlaganda beradi — NATURE_ALLOW_ORIENTATION_
-    FALLBACK yoqilgan bo'lganda ko'p uchraydigan holat), video markazdan
-    kesib (crop) 9:16 formatga keltiriladi (qora chiziqlar bilan to'ldirish
-    o'rniga) — bu holatda albatta qayta kodlanadi (stream-copy ishlatilmaydi).
 
     Eng yuqori sifat (4K, TARGET_MAX_DIMENSION) bilan boshlanadi. Manba allaqachon H.264
     bo'lsa va qayta kodlash shart bo'lmasa, video striim shunchaki nusxalanadi (tez, sifat
@@ -308,18 +262,12 @@ def prepare_video_for_posting(video_path: Path, output_path: Path,
         # bo'lsa, striim nusxalanadi (tezroq, sifat yo'qolmaydi). Overlay so'ralgan bo'lsa,
         # matnni "kuydirish" uchun albatta qayta kodlash SHART (stream-copy orqali matn
         # qo'shib bo'lmaydi) — shuning uchun bu holatda force_reencode har doim True.
-        force_reencode = (codec != "h264") or (attempt_idx > 0) or bool(overlay_filter) or crop_to_vertical
+        force_reencode = (codec != "h264") or (attempt_idx > 0) or bool(overlay_filter)
         crf = 23 if attempt_idx == 0 else 26  # pastroq bosqichlarda biroz ko'proq siqiladi
-        cmd = _build_ffmpeg_cmd(video_path, output_path, max_dimension, force_reencode, duration, track, crf,
-                                 overlay_filter, crop_to_vertical)
+        cmd = _build_ffmpeg_cmd(video_path, output_path, max_dimension, force_reencode, duration, track, crf, overlay_filter)
 
         try:
-            # MUHIM (OOM-qulash sikli tuzatildi — shared/resource_guard.py'ga
-            # qarang): ffmpeg operativ xotira jihatidan og'ir, shuning uchun
-            # kripto botining karta chizish bosqichi bilan BIR VAQTDA ishlamasligi
-            # uchun umumiy "og'ir operatsiya" semafori bilan o'raladi.
-            with heavy_operation("nature-ffmpeg"):
-                subprocess.run(cmd, capture_output=True, text=True, timeout=300, check=True)
+            subprocess.run(cmd, capture_output=True, text=True, timeout=300, check=True)
         except subprocess.SubprocessError as exc:
             # MUHIM: bu urinish muvaffaqiyatsiz bo'ldi deb `success`ni ATAYLAB False'da
             # qoldiramiz — ffmpeg xatolik bilan chiqqanda ham output_path'da chala/buzuq
@@ -356,11 +304,7 @@ def prepare_video_for_posting(video_path: Path, output_path: Path,
             logger.warning("Barcha sifat bosqichlarida ham video Telegram hajm chegarasidan katta chiqdi — eng pastki (%dpx) variant baribir joylanadi.", fallback_dimensions[-1])
 
     if not success:
-        # MUHIM (chalkashtiruvchi eski matn tuzatildi): bu funksiya False qaytarganda,
-        # chaqiruvchi (run.py) ENDI xom faylni joylamaydi — bu nomzod butunlay rad
-        # etiladi va navbatdagi nomzod sinaladi. Shuning uchun matn "hech qanday fayl
-        # joylanmaydi" deb aniq yozilgan, avvalgi ("asl fayl joylanadi") noto'g'ri edi.
-        logger.warning("ffmpeg orqali videoni hech qanday sifat darajasida tayyorlab bo'lmadi (bu nomzod rad etiladi): %s", last_error)
+        logger.warning("ffmpeg orqali videoni tayyorlab bo'lmadi, asl fayl joylanadi: %s", last_error)
         return False
 
     if track:

@@ -1,6 +1,6 @@
 """
 Dunyoning eng chiroyli tabiiy joylari ro'yxati.
-Har bir yozuv: nomi, davlati, va rasm/video qidiruv uchun query (inglizcha, Pixabay/Wikipedia uchun qulay).
+Har bir yozuv: nomi, davlati, va rasm/video qidiruv uchun query (inglizcha, Pexels/Wikipedia uchun qulay).
 Botga yangi joy qo'shish uchun shunchaki quyidagi ro'yxatga yangi dict qo'shing.
 """
 
