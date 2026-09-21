@@ -381,7 +381,40 @@ def setup_schedule() -> bool:
             if passed_today:
                 latest_slot_dt, latest_facet_key = max(passed_today, key=lambda x: x[0])
                 last = last_run_times.get(name)
-                if last is None or datetime.fromtimestamp(last) < latest_slot_dt:
+                # MUHIM (haqiqiy voqeada aniqlangan xato — "bitta postni 4-8 marta
+                # ketma-ket joylash"): AVVAL bu yerda faqat "oxirgi marta qachon
+                # ishlagan" fayli tekshirilardi. Lekin bu fayl - hub_schedule_state.json
+                # - HUB_DATA_DIR (Render Persistent Disk) sozlanmagan bo'lsa, HAR YANGI
+                # DEPLOY'da (git push) konteyner bilan birga butunlay yo'qoladi (oddiy
+                # OOM-restart'dan farqli o'laroq, deploy konteynerni YANGIDAN yaratadi).
+                # Amalda foydalanuvchi qisqa vaqt ichida bir necha marta ketma-ket
+                # deploy qilganda (masalan tuzatishlarni sinab ko'rish uchun), HAR BIR
+                # deploy "hech qachon post qilinmagan" deb o'ylab, xuddi shu (hali
+                # o'zgarmagan, chunki 4 soatlik oyna/qirra vaqti o'zgarmagan) postni
+                # QAYTA-QAYTA joylagan - bitta o'rniga 4-8 marta bir xil post.
+                #
+                # Endi qo'shimcha xavfsizlik chegarasi: agar jadval vaqti juda ESKI
+                # (standart: 90 daqiqadan ko'p) o'tib ketgan bo'lsa, "tiklash" UMUMAN
+                # qilinmaydi - buning o'rniga botning KEYINGI navbatdagi jadval vaqtigacha
+                # kutilishi ma'qulroq, negaki bunday holatda ko'pincha sabab operativ
+                # xotira/restart EMAS, balki foydalanuvchi tomonidan qisqa vaqt ichida
+                # bir necha marta qo'lda deploy qilingani (bu holatda "tiklash" mantig'i
+                # foydali emas, aksincha zararli - bir xil postni ko'p marta takrorlaydi).
+                # Haqiqiy uzoq restart holatlarida (masalan tunda soatlab xotira
+                # muammosi bo'lgan) 90 daqiqadan KO'P vaqt o'tishi kam uchraydi - odatda
+                # bir necha daqiqa ichida qayta tiklanadi.
+                catchup_max_age_minutes = _env_int("NATURE_CATCHUP_MAX_AGE_MINUTES", 90)
+                slot_age_minutes = (now_dt - latest_slot_dt).total_seconds() / 60
+                if slot_age_minutes > catchup_max_age_minutes:
+                    logger.info(
+                        "  -> %s eng so'nggi jadval vaqti (server/UTC %s, qirra: %s) %.0f daqiqa oldin "
+                        "o'tgan - bu %d daqiqalik xavfsizlik chegarasidan ko'p, shuning uchun DARHOL "
+                        "tiklanmaydi (bir xil postni bir necha marta takrorlash xavfining oldini olish "
+                        "uchun) - keyingi navbatdagi jadval vaqti kutiladi.",
+                        label, latest_slot_dt.strftime("%H:%M"), latest_facet_key,
+                        slot_age_minutes, catchup_max_age_minutes,
+                    )
+                elif last is None or datetime.fromtimestamp(last) < latest_slot_dt:
                     logger.info(
                         "  -> %s eng so'nggi jadval vaqti (server/UTC %s, qirra: %s) o'tkazib yuborilgan "
                         "bo'lishi mumkin (jarayon qayta ishga tushgan) — darhol shu qirra bilan bir marta "
