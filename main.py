@@ -67,9 +67,36 @@ logging.basicConfig(
 )
 logger = logging.getLogger("hub")
 
-from bots.crypto import run_once as run_crypto  # noqa: E402
-from bots.football import run_once as run_football  # noqa: E402
-from bots.nature import run_once as run_nature  # noqa: E402
+# MUHIM (haqiqiy voqeada aniqlangan, hub'ni BUTUNLAY ISHGA TUSHIRA OLMAYDIGAN xato):
+# avval bu uch import SHARTSIZ edi — agar foydalanuvchi biror botni "o'chirish"
+# maqsadida uning papkasini (masalan bots/crypto/) reponing o'zidan o'chirib
+# tashlasa (shunchaki .env'da token/kanal ID'ni bo'sh qoldirish o'rniga),
+# `ModuleNotFoundError` bilan main.py HALI BIRINCHI QATORDA qulab tushar edi —
+# bu esa HECH QAYSI bot (hatto muammoga aloqasi yo'q tabiat boti ham) ishga
+# tusha olmasligiga, va Render'ning uni cheksiz qayta-qayta ishga tushirishga
+# urinishiga (== restart sikli) sabab bo'lardi. Endi har bir bot alohida-alohida,
+# ImportError'ga chidamli tarzda yuklanadi — qaysi bir bot papkasi/fayli yo'q yoki
+# ichida import xatosi bo'lsa, FAQAT o'sha bot o'chirilgan deb hisoblanadi (aniq
+# log yozuvi bilan), qolganlari (jumladan tabiat boti) baribir ishlayveradi.
+def _try_import_bot(module_path: str, label: str):
+    try:
+        module = __import__(module_path, fromlist=["run_once"])
+        return module.run_once
+    except ImportError as exc:
+        logging.getLogger("hub").warning(
+            "%s boti kodi topilmadi/import qilinmadi (%s) - bu bot butunlay o'chirilgan deb hisoblanadi.",
+            label, exc,
+        )
+        return None
+
+
+run_crypto = _try_import_bot("bots.crypto", "Kripto")
+run_football = _try_import_bot("bots.football", "Futbol")
+run_nature = _try_import_bot("bots.nature", "Tabiat")
+if run_nature is None:
+    raise SystemExit(
+        "bots/nature topilmadi yoki import qilinmadi - bu asosiy bot, hub shunisiz ishlay olmaydi."
+    )
 from bots.nature.schedule_config import NATURE_DAILY_SCHEDULE  # noqa: E402
 from shared.data_dir import get_data_dir  # noqa: E402
 
@@ -297,6 +324,12 @@ def setup_schedule() -> bool:
     for name, channel_env, interval_env, default_interval, fn, label in bot_configs:
         if not os.getenv(channel_env):
             logger.info("%s boti o'chirilgan (%s sozlanmagan).", label, channel_env)
+            continue
+        if fn is None:
+            # Kanal ID sozlangan, lekin shu bot kodi (masalan bots/crypto/ papkasi)
+            # repoda topilmadi/import qilinmadi (yuqoridagi _try_import_bot'ga
+            # qarang) - shu bot xavfsiz o'tkazib yuboriladi, qolganlari ishlayveradi.
+            logger.warning("%s boti kodi topilmadi - %s sozlangan bo'lsa ham bu bot o'tkazib yuborildi.", label, channel_env)
             continue
 
         # MUHIM (foydalanuvchi bilan kelishilgan o'sish rejasi): tabiat boti standart
