@@ -62,17 +62,19 @@ def build_query(base_place: str, facet: dict) -> str:
 
 
 def build_hashtags(theme: str, facet: dict) -> list[str]:
-    """Post tagiga qo'shiladigan hashteglar ro'yxatini tayyorlaydi: FAQAT kanalning
-    umumiy hashteglari + joy nomi — jami 3 ta. Qirraga xos hashteg ATAYLAB
-    qo'shilmaydi (foydalanuvchi qarori: hech qanday "tur/kategoriya" izohi sizib
-    chiqmasin, faqat joy nomi va kanal brendi ko'rinsin)."""
-    from shared.hashtags import slugify_hashtag
+    """Post tagiga qo'shiladigan hashteglar ro'yxatini tayyorlaydi.
 
-    tags = list(CHANNEL_HASHTAGS)
-    place_tag = slugify_hashtag(theme)
-    if place_tag:
-        tags.append(place_tag)
-    return tags
+    MUHIM (foydalanuvchi qarori — yakuniy o'zgartirish): avval bu yerga joy nomi
+    ham hashteg sifatida qo'shilardi (masalan #IndusValley). Lekin foydalanuvchi
+    aynan bir xil rasm/video Wikipedia'dan olingan turli (ba'zan noto'g'ri yoki
+    bir-biriga mos kelmaydigan) joy nomlari bilan bir necha marta chiqayotganini
+    aniqladi — bu ishonchsizlik uyg'otardi. Qaror: hozircha ANIQ joy nomi
+    caption'da HAM, hashteg'da HAM umuman ko'rsatilmaydi (build_caption'ga
+    qarang, endi faqat kanal nomi/belgisi chiqadi) — FAQAT kanalning umumiy
+    hashteglari qoladi. `theme`/`facet` parametrlari kelajakda qayta yoqilishi
+    mumkinligi uchun saqlab qo'yilgan (signature buzilmasin deb), hozircha
+    ishlatilmaydi."""
+    return list(CHANNEL_HASHTAGS)
 
 
 def build_query_variants(base_place: str, facet: dict, fallback_category: str | None = None) -> list[str]:

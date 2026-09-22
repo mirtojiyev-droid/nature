@@ -80,20 +80,22 @@ from .wikimedia_fetcher import WikimediaFetcher
 logger = logging.getLogger(__name__)
 
 
-def build_caption(theme: str, facet: dict, include_follow_reminder: bool = False) -> str:
+def build_caption(theme: str, facet: dict, brand_label: str, include_follow_reminder: bool = False) -> str:
     # Telegram parse_mode="HTML" bilan yuborilgani uchun, dinamik matndagi &, <, >
     # kabi belgilar albatta escape qilinishi shart — aks holda Telegram "can't parse
     # entities" xatosi bilan butun postni rad etadi.
     #
-    # MUHIM (foydalanuvchi so'rovi bilan yakuniy soddalashtirilgan): avval sarlavhada
-    # qirra nomi ham ko'rinardi ("Joy nomi — sharsharasi" kabi). Endi HECH QANDAY
-    # qo'shimcha izoh/matn yo'q — FAQAT joy nomi. Qirra endi faqat (1) qidiruv so'zini
-    # tanlashda va (2) hashteg ro'yxatini boyitishda ICHKI ishlatiladi, caption'da
-    # umuman ko'rinmaydi. Bu ham eng sodda, ham eng xavfsiz variant (Wikipedia'dan
-    # noto'g'ri ma'lumot kelish xavfi ilgari olib tashlangan edi; endi qo'shimcha
-    # matn umuman yo'qligi uchun bunday xavf tag'in ham yo'q).
-    theme_esc = html.escape(theme)
-    header = f"🌍 <b>{theme_esc}</b>"
+    # MUHIM (foydalanuvchi qarori — yakuniy o'zgartirish): avval sarlavhada Wikipedia'dan
+    # topilgan ANIQ joy nomi ko'rinardi (masalan "Yosemite National Park"). Lekin
+    # foydalanuvchi aniqladi: bitta xuddi shu rasm/video ba'zan 2 yoki undan ortiq
+    # TURLI joy nomi bilan chiqib qolayotgan edi (chunki qidiruv so'zi umumiy bo'lsa,
+    # Pixabay/Pexels bir xil natijani turli so'rovlar uchun ham qaytarishi mumkin —
+    # bu esa "botga ishonchsizlik" tuyg'usini uyg'otadi). Foydalanuvchining o'z qarori:
+    # ANIQ joy nomi HOZIRCHA muhim emas — caption'da FAQAT kanal nomi/belgisi
+    # (NATURE_BRAND_LABEL) chiqsin. `theme` parametri hali ham funksiyaga uzatiladi
+    # (kelajakda kerak bo'lib qolishi mumkin), lekin caption matnida ENDI ishlatilmaydi.
+    brand_esc = html.escape(brand_label)
+    header = f"🌿 <b>{brand_esc}</b>"
     footer = "\n\n" + format_hashtags(build_hashtags(theme, facet))
     # MUHIM (foydalanuvchi ikkilanishi bilan): "faqat nomi, boshqa hech narsa
     # yozilmasin" degan qat'iy ko'rsatmangizga ATAYLAB ziddiyatga kirmaslik uchun, bu
@@ -337,7 +339,8 @@ def run_once(forced_facet_key: str | None = None) -> int:
         post_count = increment_and_get_post_count()
         include_reminder = (post_count % reminder_every_n == 0)
 
-    caption = build_caption(theme, facet, include_follow_reminder=include_reminder)
+    brand_label = os.getenv("NATURE_BRAND_LABEL", "Nature Channel")
+    caption = build_caption(theme, facet, brand_label, include_follow_reminder=include_reminder)
 
     poster = TelegramPoster(bot_token, channel_id)
 
@@ -409,7 +412,8 @@ def run_once(forced_facet_key: str | None = None) -> int:
 
     photo_posted = False
     if post_photo_too and media_mode != "video_only":
-        brand_label = os.getenv("NATURE_BRAND_LABEL", "Nature Channel")
+        # brand_label yuqorida (caption uchun) allaqachon hisoblangan - qayta
+        # o'qishga hojat yo'q, xuddi shu qiymat overlay uchun ham ishlatiladi.
         found_photo = None
         for min_dimension in config.min_photo_dimension_tiers():
             found_photo = _find_and_prepare_photo(_photo_sources(True, min_dimension), variants, theme, brand_label)
