@@ -130,11 +130,13 @@ class WikimediaFetcher:
         return chosen["url"]
 
     def fetch_photo_candidates(self, query: str, prefer_vertical: bool = True, max_results: int = 4,
-                                min_dimension: int = MIN_DIMENSION) -> list[str]:
-        """Bir nechta nomzod havolasini qaytaradi (pixabay_fetcher.py'dagi bir xil
-        nomdagi metodga qarang)."""
+                                min_dimension: int = MIN_DIMENSION) -> list[dict]:
+        """Bir nechta nomzod ma'lumotini qaytaradi (pixabay_fetcher.py'dagi bir xil
+        nomdagi metodga qarang). Commons'da har bir fayl uchun BITTA (rendition'siz)
+        URL bor, shuning uchun `id` sifatida to'g'ridan-to'g'ri URL'ning o'zi
+        ishlatiladi - baribir doimiy/o'zgarmas."""
         candidates = self._find_matching_photos(query, prefer_vertical, min_dimension)
-        return [c["url"] for c in candidates[:max_results]]
+        return [{"url": c["url"], "id": c["url"]} for c in candidates[:max_results]]
 
     def _find_matching_video_candidates(self, query: str, prefer_vertical: bool, min_dimension: int) -> list[dict]:
         """Ichki yordamchi — `fetch_video` va `fetch_video_candidates` uchun umumiy
@@ -188,7 +190,7 @@ class WikimediaFetcher:
         bir xil nomdagi metodga qarang (foydalanish sababi)."""
         candidates = self._find_matching_video_candidates(query, prefer_vertical, min_dimension)
         return [
-            {"url": c["url"], "is_vertical": c["is_vertical"], "score": c["score"]}
+            {"url": c["url"], "is_vertical": c["is_vertical"], "score": c["score"], "id": c["url"]}
             for c in candidates[:max_results]
         ]
 

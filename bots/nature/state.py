@@ -126,3 +126,59 @@ def increment_and_get_post_count() -> int:
     state["count"] = state.get("count", 0) + 1
     _save_json(POST_COUNTER_FILE, state)
     return state["count"]
+
+
+# ----------------------------------------------------------------------------
+# Joylangan media (video/rasm) tarixi — BIR XIL rasm/video ikkinchi marta (yangi
+# joy nomi bilan) qayta joylanib qolmasligi uchun.
+#
+# MUHIM (haqiqiy voqeada aniqlangan muammo): Pixabay/Pexels/Wikimedia'ning
+# qidiruvi TASODIFIY EMAS — bir xil so'rov (joy nomi + qirra) deyarli har doim
+# BIR XIL eng yuqori reytingli natijani qaytaradi. Joy nomlari havzasi
+# (topics.py) va kunlik jadval (schedule_config.py) davriy ravishda BIR XIL
+# so'rovlarni qayta hosil qilgani uchun, ilgari allaqachon joylangan aynan
+# o'sha video/rasm boshqa safar (masalan boshqa kunda, xuddi shu joy qayta
+# tanlanganda) qaytadan topilib, YANGI (boshqa) joy caption'i bilan qayta
+# joylanardi — foydalanuvchiga xuddi bot bir xil kontentni "qayta-qayta"
+# joylayotgandek ko'rinardi.
+#
+# Yechim: har bir MUVAFFAQIYATLI joylangan media manzili (URL) shu yerda
+# doimiy saqlanadi (HUB_DATA_DIR bilan Persistent Disk'ga ham yozilishi
+# mumkin). Keyingi safar xuddi shu URL nomzod sifatida chiqsa, run.py buni
+# o'tkazib yuborib, ro'yxatdagi KEYINGI nomzodga o'tadi (nomzodlar ro'yxati
+# allaqachon bir nechta variantni o'z ichiga oladi — media_fetcher'lar
+# max_results=4 bilan ishlaydi).
+MEDIA_HISTORY_FILE = _NATURE_DATA_DIR / "posted_media_history.json"
+# Ro'yxat cheksiz o'smasligi uchun har bir turdan (video/rasm) so'nggi shuncha
+# tasi saqlanadi - eskilari avtomatik unutiladi (asosiy maqsad YAQIN orada
+# takrorlanishning oldini olish, umrbod xotira shart emas).
+MEDIA_HISTORY_MAX_PER_KIND = 3000
+
+
+def _load_media_history() -> dict:
+    return _load_json(MEDIA_HISTORY_FILE, {"video": [], "photo": []})
+
+
+def is_media_already_posted(kind: str, url: str) -> bool:
+    """`kind` — "video" yoki "photo". `url` avval muvaffaqiyatli joylangan
+    bo'lsa True qaytaradi (chaqiruvchi bu nomzodni o'tkazib yuborishi kerak)."""
+    if not url:
+        return False
+    history = _load_media_history()
+    return url in history.get(kind, [])
+
+
+def mark_media_posted(kind: str, url: str) -> None:
+    """`url` muvaffaqiyatli joylangandan KEYIN chaqiriladi - shu URL endi
+    "ishlatilgan" deb belgilanadi va kelajakda qayta tanlanmaydi."""
+    if not url:
+        return
+    history = _load_media_history()
+    lst = history.get(kind, [])
+    if url not in lst:
+        lst.append(url)
+    history[kind] = lst[-MEDIA_HISTORY_MAX_PER_KIND:]
+    try:
+        _save_json(MEDIA_HISTORY_FILE, history)
+    except OSError as exc:
+        logger.warning("Joylangan media tarixini saqlab bo'lmadi: %s", exc)

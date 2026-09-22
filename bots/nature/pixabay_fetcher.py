@@ -179,14 +179,20 @@ class PixabayFetcher:
         return chosen.get("fullHDURL") or chosen.get("largeImageURL")
 
     def fetch_photo_candidates(self, query: str, prefer_vertical: bool = True, max_results: int = 4,
-                                min_dimension: int = MIN_PHOTO_DIMENSION) -> list[str]:
-        """Bir nechta nomzod havolasini (eng yaxshisidan boshlab) qaytaradi — video
-        uchun `fetch_video_candidates`dagi bir xil sababga ko'ra (birinchi nomzod
-        yuklab bo'lmasa yoki buzuq/bo'sh chiqsa, keyingisini sinash uchun).
-        `min_dimension` — run.py orqali config.py'dagi bosqichma-bosqich pasayadigan
-        sifat darajalaridan (masalan avval 1600px, topilmasa 1080px) uzatiladi."""
+                                min_dimension: int = MIN_PHOTO_DIMENSION) -> list[dict]:
+        """Bir nechta nomzod ma'lumotini (eng yaxshisidan boshlab, har biri
+        {"url", "id"}) qaytaradi — video uchun `fetch_video_candidates`dagi bir xil
+        sababga ko'ra (birinchi nomzod yuklab bo'lmasa yoki buzuq/bo'sh chiqsa,
+        keyingisini sinash uchun). `min_dimension` — run.py orqali config.py'dagi
+        bosqichma-bosqich pasayadigan sifat darajalaridan (masalan avval 1600px,
+        topilmasa 1080px) uzatiladi. `id` — hit'ning doimiy Pixabay ID'si (URL
+        `fullHDURL`/`largeImageURL` orasida farq qilishi mumkin bo'lgani uchun,
+        takroriy postni aniqlashda URL o'rniga shu ID ishlatiladi)."""
         good = self._find_matching_photos(query, prefer_vertical, min_dimension)
-        return [h.get("fullHDURL") or h.get("largeImageURL") for h in good[:max_results]]
+        return [
+            {"url": h.get("fullHDURL") or h.get("largeImageURL"), "id": h.get("id")}
+            for h in good[:max_results]
+        ]
 
     def _find_matching_video_files(self, query: str, prefer_vertical: bool, min_dimension: int) -> list[dict]:
         """Ichki yordamchi — so'rovga mos, sifat talablariga javob beradigan barcha
@@ -225,6 +231,17 @@ class PixabayFetcher:
             is_vertical = best_file["height"] > best_file["width"]
             if is_vertical == prefer_vertical or allow_orientation_fallback():
                 best_file["is_vertical"] = is_vertical
+                # MUHIM (haqiqiy voqeada aniqlangan muammo — takroriy post):
+                # bitta Pixabay videosining o'zi bir nechta sifat darajasida
+                # (large/medium/small) TURLI URL'ga ega. Agar shu video BOSHQA
+                # safar BOSHQA sifat darajasi (masalan avval 1080p, endi 720p)
+                # bilan qayta topilsa, URL boshqacha bo'lgani uchun run.py'dagi
+                # "allaqachon joylanganmi" tekshiruvi buni ushlay olmasdi -
+                # bir xil video ikkinchi marta (boshqa joy nomi bilan) joylanib
+                # ketardi. Endi hit'ning DOIMIY (sifat darajasidan qat'i nazar
+                # o'zgarmaydigan) ID'sini ham qo'shib qo'yamiz - run.py shu ID
+                # bo'yicha tekshiradi, URL bo'yicha emas.
+                best_file["media_id"] = hit.get("id")
                 matching.append(best_file)
 
         if not matching:
@@ -259,6 +276,9 @@ class PixabayFetcher:
         uzatiladi."""
         matching = self._find_matching_video_files(query, prefer_vertical, min_dimension)
         return [
-            {"url": f["url"], "width": f["width"], "height": f["height"], "is_vertical": f["is_vertical"]}
+            {
+                "url": f["url"], "width": f["width"], "height": f["height"],
+                "is_vertical": f["is_vertical"], "id": f.get("media_id"),
+            }
             for f in matching[:max_results]
         ]

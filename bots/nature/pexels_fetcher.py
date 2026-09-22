@@ -76,6 +76,11 @@ class PexelsFetcher:
                 if best_file is None or w * h > best_file["width"] * best_file["height"]:
                     best_file = {"url": vf["link"], "width": w, "height": h, "is_vertical": is_vertical}
             if best_file:
+                # pixabay_fetcher.py'dagi bir xil sababga ko'ra: bitta Pexels videosi
+                # bir nechta rendition URL'ga ega bo'lishi mumkin - videoning
+                # DOIMIY ID'sini ("id", rendition'dan qat'i nazar bir xil) ham
+                # saqlaymiz, run.py takroriy postni shu bo'yicha aniqlaydi.
+                best_file["media_id"] = video.get("id")
                 matching.append(best_file)
 
         if not matching:
@@ -92,7 +97,10 @@ class PexelsFetcher:
                                 min_dimension: int = MIN_VIDEO_DIMENSION) -> list[dict]:
         matching = self._find_matching_video_files(query, prefer_vertical, min_dimension)
         return [
-            {"url": f["url"], "width": f["width"], "height": f["height"], "is_vertical": f["is_vertical"]}
+            {
+                "url": f["url"], "width": f["width"], "height": f["height"],
+                "is_vertical": f["is_vertical"], "id": f.get("media_id"),
+            }
             for f in matching[:max_results]
         ]
 
@@ -120,7 +128,7 @@ class PexelsFetcher:
                 continue
             url = (photo.get("src") or {}).get("original")
             if url:
-                good.append({"url": url, "score": w * h, "is_vertical": is_vertical})
+                good.append({"url": url, "score": w * h, "is_vertical": is_vertical, "id": photo.get("id")})
 
         if not good:
             logger.info("Pexels'da '%s' uchun mos rasm topilmadi", query)
@@ -130,6 +138,6 @@ class PexelsFetcher:
         )
 
     def fetch_photo_candidates(self, query: str, prefer_vertical: bool = True, max_results: int = 4,
-                                min_dimension: int = MIN_PHOTO_DIMENSION) -> list[str]:
+                                min_dimension: int = MIN_PHOTO_DIMENSION) -> list[dict]:
         good = self._find_matching_photos(query, prefer_vertical, min_dimension)
-        return [p["url"] for p in good[:max_results]]
+        return [{"url": p["url"], "id": p.get("id")} for p in good[:max_results]]

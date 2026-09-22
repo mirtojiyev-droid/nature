@@ -64,7 +64,14 @@ from .content_quality import is_blank_image_bytes, is_blank_video_file
 from .pexels_fetcher import PexelsFetcher
 from .pixabay_fetcher import PixabayFetcher
 from .places import PLACES
-from .state import get_current_theme, increment_and_get_post_count, mark_facet_used, pick_next_facet
+from .state import (
+    get_current_theme,
+    increment_and_get_post_count,
+    is_media_already_posted,
+    mark_facet_used,
+    mark_media_posted,
+    pick_next_facet,
+)
 from shared.telegram_poster import TelegramPoster
 from shared.hashtags import format_hashtags
 from .topics import get_place_category, get_topic_pool
@@ -97,7 +104,7 @@ def build_caption(theme: str, facet: dict, include_follow_reminder: bool = False
 
 
 def _find_and_prepare_video(sources: list[tuple[str, callable]], variants: list[str],
-                             tmp_path: Path, theme: str, prefer_vertical: bool = True) -> Path | None:
+                             tmp_path: Path, theme: str, prefer_vertical: bool = True) -> tuple[Path, str] | None:
     """Har bir manba/so'rov birikmasi uchun BIR NECHTA nomzod (fetch_video_candidates —
     endi har biri {"url", "is_vertical", ...} ko'rinishidagi dict) oladi, va har birini
     KETMA-KET: yuklab olish -> bo'sh/qora kadr tekshiruvi -> ffmpeg orqali Telegram
@@ -127,6 +134,21 @@ def _find_and_prepare_video(sources: list[tuple[str, callable]], variants: list[
             candidates = fetch_candidates_fn(query)
             for candidate in candidates:
                 video_url = candidate["url"]
+                # MUHIM (haqiqiy voqeada aniqlangan muammo — birinchi tuzatishdan
+                # KEYIN ham davom etgan): bitta video bir nechta sifat darajasida
+                # (masalan large/medium) TURLI URL'ga ega, shuning uchun faqat URL
+                # bo'yicha solishtirish yetarli emas edi. Endi manbaning DOIMIY
+                # ID'si (mavjud bo'lsa) bilan tekshiramiz - shu tufayli sifat
+                # darajasi o'zgarsa ham bir xil video tanib olinadi. Manba nomi
+                # bilan birga ("Pixabay:12345") saqlanadi, chunki turli manbalarning
+                # ID raqamlari mos kelib qolishi mumkin (tasodifiy to'qnashuv).
+                dedup_key = f"{source_name}:{candidate.get('id') or video_url}"
+                if is_media_already_posted("video", dedup_key):
+                    # Bir xil so'rov ko'pincha bir xil natijani qaytaradi - bu video
+                    # ILGARI (boshqa joy nomi bilan bo'lsa ham) allaqachon joylangan,
+                    # qayta joylanmasin, ro'yxatdagi keyingi nomzodga o'tamiz.
+                    logger.info("'%s' manbasidan video (so'rov: '%s') ALLAQACHON joylangan edi - keyingi nomzod sinaladi.", source_name, query)
+                    continue
                 is_vertical = candidate.get("is_vertical", prefer_vertical)
                 crop_to_vertical = prefer_vertical and not is_vertical
                 attempt += 1
@@ -150,7 +172,7 @@ def _find_and_prepare_video(sources: list[tuple[str, callable]], variants: list[
                         "Video topildi, sifat nazoratidan o'tdi va tayyorlandi — manba: %s, so'rov: '%s' (%d-nomzod%s).",
                         source_name, query, attempt, ", gorizontaldan vertikalga kesildi" if crop_to_vertical else "",
                     )
-                    return final_path
+                    return final_path, dedup_key
                 logger.warning(
                     "'%s' manbasidan video (so'rov: '%s') ffmpeg orqali qayta ishlanmadi - keyingi nomzod sinaladi.",
                     source_name, query,
@@ -160,7 +182,7 @@ def _find_and_prepare_video(sources: list[tuple[str, callable]], variants: list[
 
 
 def _find_and_prepare_photo(sources: list[tuple[str, callable]], variants: list[str],
-                             theme: str, brand_label: str) -> bytes | None:
+                             theme: str, brand_label: str) -> tuple[bytes, str] | None:
     """`_find_and_prepare_video`bilan bir xil mantiq, faqat rasm uchun: har bir manba/
     so'rov birikmasidan bir nechta nomzod olib, har birini KETMA-KET: xotiraga yuklash
     -> bo'sh/bir xil rangli tekshiruvi -> brendlash overlay chizish bosqichlaridan
@@ -168,8 +190,19 @@ def _find_and_prepare_photo(sources: list[tuple[str, callable]], variants: list[
     bo'lsa, Telegram'ga joylashga tayyor (overlay bilan) rasm baytlarini qaytaradi."""
     for query in variants:
         for source_name, fetch_candidates_fn in sources:
-            candidate_urls = fetch_candidates_fn(query)
-            for photo_url in candidate_urls:
+            candidates = fetch_candidates_fn(query)
+            for candidate in candidates:
+                photo_url = candidate["url"]
+                # video'dagi bir xil sabab (yuqoridagi _find_and_prepare_video'ga
+                # qarang): rasmning ham sifat darajasiga qarab boshqa URL bo'lishi
+                # mumkin, shuning uchun manbaning doimiy ID'si bilan tekshiramiz.
+                dedup_key = f"{source_name}:{candidate.get('id') or photo_url}"
+                if is_media_already_posted("photo", dedup_key):
+                    # Video bilan bir xil sabab: bir xil so'rov ko'pincha bir xil rasmni
+                    # qaytaradi - bu rasm ILGARI allaqachon joylangan, keyingi nomzod
+                    # sinaladi.
+                    logger.info("'%s' manbasidan rasm (so'rov: '%s') ALLAQACHON joylangan edi - keyingi nomzod sinaladi.", source_name, query)
+                    continue
                 photo_bytes = download_bytes(photo_url)
                 if not photo_bytes:
                     logger.warning("'%s' manbasidan rasm (so'rov: '%s') yuklab olinmadi - keyingi nomzod sinaladi.", source_name, query)
@@ -187,7 +220,7 @@ def _find_and_prepare_photo(sources: list[tuple[str, callable]], variants: list[
                 else:
                     result = photo_bytes
                 logger.info("Rasm topildi va tayyorlandi — manba: %s, so'rov: '%s'.", source_name, query)
-                return result
+                return result, dedup_key
     logger.info("Hech qanday rasm nomzodi sifat nazoratidan o'ta olmadi.")
     return None
 
@@ -356,11 +389,19 @@ def run_once(forced_facet_key: str | None = None) -> int:
             for min_dimension in config.min_video_dimension_tiers():
                 with tempfile.TemporaryDirectory() as tmp_dir:
                     tmp_path = Path(tmp_dir)
-                    final_path = _find_and_prepare_video(
+                    found = _find_and_prepare_video(
                         _video_sources(True, min_dimension), variants, tmp_path, theme, prefer_vertical=True,
                     )
-                    if final_path:
+                    if found:
+                        final_path, video_url = found
                         video_posted = poster.post_video_file(final_path, caption)
+                        if video_posted:
+                            # Faqat HAQIQATAN Telegram'ga muvaffaqiyatli joylangandan
+                            # keyin "ishlatilgan" deb belgilaymiz - aks holda (masalan
+                            # tarmoq xatoligi tufayli joylanmasa) keyingi urinishda bu
+                            # media noto'g'ri ravishda "allaqachon joylangan" deb
+                            # o'tkazib yuborilardi.
+                            mark_media_posted("video", video_url)
                 if video_posted:
                     break
             if not video_posted:
@@ -369,13 +410,17 @@ def run_once(forced_facet_key: str | None = None) -> int:
     photo_posted = False
     if post_photo_too and media_mode != "video_only":
         brand_label = os.getenv("NATURE_BRAND_LABEL", "Nature Channel")
-        photo_bytes = None
+        found_photo = None
         for min_dimension in config.min_photo_dimension_tiers():
-            photo_bytes = _find_and_prepare_photo(_photo_sources(True, min_dimension), variants, theme, brand_label)
-            if photo_bytes:
+            found_photo = _find_and_prepare_photo(_photo_sources(True, min_dimension), variants, theme, brand_label)
+            if found_photo:
                 break
-        if photo_bytes:
+        if found_photo:
+            photo_bytes, photo_url = found_photo
             photo_posted = poster.post_photo_bytes(photo_bytes, caption)
+            if photo_posted:
+                # Faqat haqiqatan joylangandan keyin belgilaymiz (video bilan bir xil sabab).
+                mark_media_posted("photo", photo_url)
         if not photo_posted:
             logger.error("'%s' (%s) uchun rasmni joylashda xatolik.", theme, facet["label"])
 
