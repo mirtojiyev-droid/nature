@@ -64,12 +64,12 @@ from .content_quality import is_blank_image_bytes, is_blank_video_file
 from .pexels_fetcher import PexelsFetcher
 from .pixabay_fetcher import PixabayFetcher
 from .places import PLACES
+from . import archive
+from .fingerprint import photo_fingerprint, sha256_file, video_fingerprint
 from .state import (
     get_current_theme,
     increment_and_get_post_count,
-    is_media_already_posted,
     mark_facet_used,
-    mark_media_posted,
     pick_next_facet,
 )
 from shared.telegram_poster import TelegramPoster
@@ -105,8 +105,45 @@ def build_caption(theme: str, facet: dict, brand_label: str, include_follow_remi
     return header + reminder + footer
 
 
+def _local_key(path: Path) -> str:
+    try:
+        size = path.stat().st_size
+    except OSError:
+        size = 0
+    return f"local:{path.name}:{size}"
+
+
+def _posted_local_videos() -> set[str]:
+    """localfootage/ dagi allaqachon joylangan fayllar nomlari (qayta tanlanmasligi uchun)."""
+    from .local_footage import _list_local_videos
+    return {p.name for p in _list_local_videos() if archive.is_posted("video", _local_key(p))}
+
+
+def _post_with_archive(poster: TelegramPoster, kind: str, meta: dict, theme: str, facet: dict, send_fn) -> bool:
+    """Media'ni ARXIV nazorati ostida yuboradi:
+      1) yuborishdan OLDIN "pending" deb band qilinadi (jarayon o'rtada o'chsa ham qayta chiqmaydi);
+      2) muvaffaqiyat -> "posted" (+ Telegram message_id);
+      3) Telegram ANIQ rad etdi yoki so'rov yetib bormadi -> "released" (keyin qayta sinash mumkin);
+      4) natija NOANIQ (timeout) -> "uncertain" — joylangan deb hisoblanadi, qayta chiqmaydi."""
+    key = meta["key"]
+    archive.reserve(
+        kind, key, url=meta.get("url"), source=meta.get("source"), query=meta.get("query"),
+        theme=theme, facet=facet.get("key"), sha256=meta.get("sha256"), phash=meta.get("phash"),
+    )
+    ok = send_fn()
+    if ok:
+        archive.confirm(kind, key, message_id=poster.last_message_id)
+        return True
+    if poster.last_error_kind == "uncertain":
+        logger.warning("%s (%s) yuborish natijasi noaniq — takror chiqmasligi uchun arxivda 'joylangan' deb qoldirildi.", kind, key)
+        archive.confirm(kind, key, uncertain=True)
+    else:
+        archive.release(kind, key)
+    return False
+
+
 def _find_and_prepare_video(sources: list[tuple[str, callable]], variants: list[str],
-                             tmp_path: Path, theme: str, prefer_vertical: bool = True) -> tuple[Path, str] | None:
+                             tmp_path: Path, theme: str, prefer_vertical: bool = True) -> tuple[Path, dict] | None:
     """Har bir manba/so'rov birikmasi uchun BIR NECHTA nomzod (fetch_video_candidates —
     endi har biri {"url", "is_vertical", ...} ko'rinishidagi dict) oladi, va har birini
     KETMA-KET: yuklab olish -> bo'sh/qora kadr tekshiruvi -> ffmpeg orqali Telegram
@@ -145,7 +182,8 @@ def _find_and_prepare_video(sources: list[tuple[str, callable]], variants: list[
                 # bilan birga ("Pixabay:12345") saqlanadi, chunki turli manbalarning
                 # ID raqamlari mos kelib qolishi mumkin (tasodifiy to'qnashuv).
                 dedup_key = f"{source_name}:{candidate.get('id') or video_url}"
-                if is_media_already_posted("video", dedup_key):
+                # URL ham tekshiriladi — eski (migratsiyadan oldingi) yozuvlar xom URL edi.
+                if archive.is_posted("video", dedup_key, video_url):
                     # Bir xil so'rov ko'pincha bir xil natijani qaytaradi - bu video
                     # ILGARI (boshqa joy nomi bilan bo'lsa ham) allaqachon joylangan,
                     # qayta joylanmasin, ro'yxatdagi keyingi nomzodga o'tamiz.
@@ -162,6 +200,16 @@ def _find_and_prepare_video(sources: list[tuple[str, callable]], variants: list[
                 if is_blank_video_file(raw_path):
                     logger.warning("'%s' manbasidan video (so'rov: '%s') bo'sh/qora ekan - keyingi nomzod sinaladi.", source_name, query)
                     continue
+                # KONTENT bo'yicha tekshiruv: bir xil video boshqa manbada/boshqa ID
+                # bilan/boshqa sifatda qayta topilgan bo'lsa ham tanib olinadi.
+                fp = video_fingerprint(raw_path)
+                dup = archive.find_duplicate_content("video", fp)
+                if dup:
+                    logger.info(
+                        "'%s' manbasidan video (so'rov: '%s') KONTENT bo'yicha avval joylangan videoga o'xshaydi "
+                        "(%s) - keyingi nomzod sinaladi.", source_name, query, dup.get("key"),
+                    )
+                    continue
                 final_path = tmp_path / f"final_{attempt}.mp4"
                 # MUHIM (foydalanuvchi qarori): standart bo'yicha video ustiga hech qanday
                 # matn (joy nomi/kanal belgisi) chizilmaydi - manzaraning asosiy qismini
@@ -170,11 +218,18 @@ def _find_and_prepare_video(sources: list[tuple[str, callable]], variants: list[
                 # (prepare_video_for_posting overlay'ni UMUMAN qo'shmaydi).
                 overlay_location = theme if config.media_overlay_enabled() else None
                 if prepare_video_for_posting(raw_path, final_path, location_text=overlay_location, crop_to_vertical=crop_to_vertical):
+                    # Telegram Bot API 50MB'dan katta videoni qabul qilmaydi — avval bunday
+                    # holatda butun video bosqichi to'xtab, post videosiz qolardi. Endi
+                    # shunchaki keyingi nomzodga o'tamiz.
+                    size_mb = final_path.stat().st_size / (1024 * 1024)
+                    if size_mb > 49:
+                        logger.warning("'%s' manbasidan video (so'rov: '%s') tayyorlangandan keyin %.1f MB — Telegram limiti (50MB) oshadi, keyingi nomzod sinaladi.", source_name, query, size_mb)
+                        continue
                     logger.info(
                         "Video topildi, sifat nazoratidan o'tdi va tayyorlandi — manba: %s, so'rov: '%s' (%d-nomzod%s).",
                         source_name, query, attempt, ", gorizontaldan vertikalga kesildi" if crop_to_vertical else "",
                     )
-                    return final_path, dedup_key
+                    return final_path, {"key": dedup_key, "url": video_url, "source": source_name, "query": query, **fp}
                 logger.warning(
                     "'%s' manbasidan video (so'rov: '%s') ffmpeg orqali qayta ishlanmadi - keyingi nomzod sinaladi.",
                     source_name, query,
@@ -184,7 +239,7 @@ def _find_and_prepare_video(sources: list[tuple[str, callable]], variants: list[
 
 
 def _find_and_prepare_photo(sources: list[tuple[str, callable]], variants: list[str],
-                             theme: str, brand_label: str) -> tuple[bytes, str] | None:
+                             theme: str, brand_label: str) -> tuple[bytes, dict] | None:
     """`_find_and_prepare_video`bilan bir xil mantiq, faqat rasm uchun: har bir manba/
     so'rov birikmasidan bir nechta nomzod olib, har birini KETMA-KET: xotiraga yuklash
     -> bo'sh/bir xil rangli tekshiruvi -> brendlash overlay chizish bosqichlaridan
@@ -199,7 +254,7 @@ def _find_and_prepare_photo(sources: list[tuple[str, callable]], variants: list[
                 # qarang): rasmning ham sifat darajasiga qarab boshqa URL bo'lishi
                 # mumkin, shuning uchun manbaning doimiy ID'si bilan tekshiramiz.
                 dedup_key = f"{source_name}:{candidate.get('id') or photo_url}"
-                if is_media_already_posted("photo", dedup_key):
+                if archive.is_posted("photo", dedup_key, photo_url):
                     # Video bilan bir xil sabab: bir xil so'rov ko'pincha bir xil rasmni
                     # qaytaradi - bu rasm ILGARI allaqachon joylangan, keyingi nomzod
                     # sinaladi.
@@ -212,6 +267,14 @@ def _find_and_prepare_photo(sources: list[tuple[str, callable]], variants: list[
                 if is_blank_image_bytes(photo_bytes):
                     logger.warning("'%s' manbasidan rasm (so'rov: '%s') bo'sh/bir xil rangdan iborat - keyingi nomzod sinaladi.", source_name, query)
                     continue
+                fp = photo_fingerprint(photo_bytes)
+                dup = archive.find_duplicate_content("photo", fp)
+                if dup:
+                    logger.info(
+                        "'%s' manbasidan rasm (so'rov: '%s') KONTENT bo'yicha avval joylangan rasmga o'xshaydi "
+                        "(%s) - keyingi nomzod sinaladi.", source_name, query, dup.get("key"),
+                    )
+                    continue
                 # MUHIM (foydalanuvchi qarori): standart bo'yicha rasm ustiga hech qanday
                 # matn (joy nomi/kanal belgisi) chizilmaydi - manzaraning asosiy qismini
                 # yopib qo'yardi. config.media_overlay_enabled() bilan (.env orqali)
@@ -222,7 +285,7 @@ def _find_and_prepare_photo(sources: list[tuple[str, callable]], variants: list[
                 else:
                     result = photo_bytes
                 logger.info("Rasm topildi va tayyorlandi — manba: %s, so'rov: '%s'.", source_name, query)
-                return result, dedup_key
+                return result, {"key": dedup_key, "url": photo_url, "source": source_name, "query": query, **fp}
     logger.info("Hech qanday rasm nomzodi sifat nazoratidan o'ta olmadi.")
     return None
 
@@ -257,6 +320,8 @@ def run_once(forced_facet_key: str | None = None) -> int:
     if missing:
         logger.error("Quyidagi .env sozlamalari yo'q: %s. README.md'ga qarang.", ", ".join(missing))
         return 1
+
+    archive.ensure_loaded()
 
     seed_places = [p["query"] for p in PLACES]
     pool = get_topic_pool(seed_places=seed_places)
@@ -315,14 +380,14 @@ def run_once(forced_facet_key: str | None = None) -> int:
         # yuklay olmasa, boshqasini qidirsin").
         return [
             (label, lambda q, a=adapter, pv=prefer_vertical, md=min_dimension:
-             a.fetch_video_candidates(q, prefer_vertical=pv, min_dimension=md))
+             a.fetch_video_candidates(q, prefer_vertical=pv, min_dimension=md, max_results=config.candidates_per_query()))
             for label, adapter in _ordered_adapters()
         ]
 
     def _photo_sources(prefer_vertical: bool, min_dimension: int):
         return [
             (label, lambda q, a=adapter, pv=prefer_vertical, md=min_dimension:
-             a.fetch_photo_candidates(q, prefer_vertical=pv, min_dimension=md))
+             a.fetch_photo_candidates(q, prefer_vertical=pv, min_dimension=md, max_results=config.candidates_per_query()))
             for label, adapter in _ordered_adapters()
         ]
 
@@ -366,27 +431,27 @@ def run_once(forced_facet_key: str | None = None) -> int:
     video_posted = False
 
     if media_mode != "photo_only":
-        local_video = find_local_video(variants, prefer_vertical=True)
+        local_video = find_local_video(variants, prefer_vertical=True, exclude=_posted_local_videos())
         if local_video and not is_blank_video_file(local_video):
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                tmp_path = Path(tmp_dir)
-                final_path = tmp_path / "final_video.mp4"
-                overlay_location = theme if config.media_overlay_enabled() else None
-                if prepare_video_for_posting(local_video, final_path, location_text=overlay_location):
-                    video_posted = poster.post_video_file(final_path, caption)
-                    if not video_posted:
-                        logger.error("Lokal video (%s) joylashda xatolik.", local_video.name)
-                else:
-                    # MUHIM (foydalanuvchi tomonidan aniqlangan muammo — haqiqiy misolda
-                    # ko'rilgan): avval qayta ishlash (ffmpeg) muvaffaqiyatsiz bo'lsa, XOM
-                    # (original) fayl to'g'ridan-to'g'ri joylanardi. Bu — sifat nazoratini
-                    # butunlay chetlab o'tish degani: xom fayl noma'lum formatda (masalan
-                    # .webm) bo'lishi mumkin, Telegram mobil ilovasi buni o'ynatib
-                    # bo'lmaydigan oddiy FAYL (hujjat) sifatida ko'rsatib qo'yadi — bu esa
-                    # "pro" kanalning ko'rinishini butunlay buzadi. Endi bunday holatda
-                    # video UMUMAN JOYLANMAYDI (postsiz qolish, o'ynatib bo'lmaydigan xom
-                    # fayl joylashdan ancha yaxshi).
-                    logger.warning("Lokal video (%s) ffmpeg orqali qayta ishlanmadi - sifat nazoratidan o'tmagani uchun JOYLANMAYDI.", local_video.name)
+            local_meta = {"key": _local_key(local_video), "source": "local", "sha256": sha256_file(local_video)}
+            if archive.find_duplicate_content("video", {"sha256": local_meta["sha256"]}):
+                logger.info("Lokal video (%s) avval joylangan — o'tkazib yuboriladi.", local_video.name)
+            else:
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    tmp_path = Path(tmp_dir)
+                    final_path = tmp_path / "final_video.mp4"
+                    overlay_location = theme if config.media_overlay_enabled() else None
+                    if prepare_video_for_posting(local_video, final_path, location_text=overlay_location):
+                        video_posted = _post_with_archive(
+                            poster, "video", local_meta, theme, facet,
+                            lambda: poster.post_video_file(final_path, caption),
+                        )
+                        if not video_posted:
+                            logger.error("Lokal video (%s) joylashda xatolik.", local_video.name)
+                    else:
+                        # ffmpeg muvaffaqiyatsiz bo'lsa xom fayl JOYLANMAYDI (Telegram uni
+                        # o'ynatib bo'lmaydigan hujjat sifatida ko'rsatardi).
+                        logger.warning("Lokal video (%s) ffmpeg orqali qayta ishlanmadi - sifat nazoratidan o'tmagani uchun JOYLANMAYDI.", local_video.name)
 
         if not video_posted:
             for min_dimension in config.min_video_dimension_tiers():
@@ -396,15 +461,11 @@ def run_once(forced_facet_key: str | None = None) -> int:
                         _video_sources(True, min_dimension), variants, tmp_path, theme, prefer_vertical=True,
                     )
                     if found:
-                        final_path, video_url = found
-                        video_posted = poster.post_video_file(final_path, caption)
-                        if video_posted:
-                            # Faqat HAQIQATAN Telegram'ga muvaffaqiyatli joylangandan
-                            # keyin "ishlatilgan" deb belgilaymiz - aks holda (masalan
-                            # tarmoq xatoligi tufayli joylanmasa) keyingi urinishda bu
-                            # media noto'g'ri ravishda "allaqachon joylangan" deb
-                            # o'tkazib yuborilardi.
-                            mark_media_posted("video", video_url)
+                        final_path, video_meta = found
+                        video_posted = _post_with_archive(
+                            poster, "video", video_meta, theme, facet,
+                            lambda: poster.post_video_file(final_path, caption),
+                        )
                 if video_posted:
                     break
             if not video_posted:
@@ -420,11 +481,11 @@ def run_once(forced_facet_key: str | None = None) -> int:
             if found_photo:
                 break
         if found_photo:
-            photo_bytes, photo_url = found_photo
-            photo_posted = poster.post_photo_bytes(photo_bytes, caption)
-            if photo_posted:
-                # Faqat haqiqatan joylangandan keyin belgilaymiz (video bilan bir xil sabab).
-                mark_media_posted("photo", photo_url)
+            photo_bytes, photo_meta = found_photo
+            photo_posted = _post_with_archive(
+                poster, "photo", photo_meta, theme, facet,
+                lambda: poster.post_photo_bytes(photo_bytes, caption, filename="photo.jpg"),
+            )
         if not photo_posted:
             logger.error("'%s' (%s) uchun rasmni joylashda xatolik.", theme, facet["label"])
 

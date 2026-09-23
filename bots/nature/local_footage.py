@@ -65,7 +65,7 @@ def _is_vertical(path: Path) -> bool | None:
         return None
 
 
-def find_local_video(variants: list[str], prefer_vertical: bool = True) -> Path | None:
+def find_local_video(variants: list[str], prefer_vertical: bool = True, exclude: set[str] | None = None) -> Path | None:
     """`variants` ro'yxatini (eng aniq so'rovdan eng umumiygacha) navbat bilan tekshiradi
     — fayl nomida shu so'rovning kamida bitta so'zi uchrasa, mos nomzod deb hisoblanadi.
     Bir nechta mos fayl topilsa, orientatsiyasi (vertikal/gorizontal) so'ralganiga to'g'ri
@@ -76,7 +76,9 @@ def find_local_video(variants: list[str], prefer_vertical: bool = True) -> Path 
     music/ papkasidagi kabi — bu papka bo'sh bo'lsa (yoki hech qanday fayl nomi joriy
     so'rovlarga mos kelmasa), None qaytadi va chaqiruvchi (main.py) odatdagidek
     Pixabay/Wikimedia Commons kaskadiga o'tadi."""
-    videos = _list_local_videos()
+    # `exclude` — allaqachon joylangan fayl nomlari (archive.py). Avval bu yerda hech
+    # qanday tekshiruv yo'q edi: bir xil lokal fayl har safar qayta-qayta chiqardi.
+    videos = [p for p in _list_local_videos() if not exclude or p.name not in exclude]
     if not videos:
         return None
 

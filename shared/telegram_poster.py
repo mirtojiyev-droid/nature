@@ -57,6 +57,8 @@ class TelegramPoster:
     def __init__(self, bot_token: str, channel_id: str):
         self.bot_token = bot_token
         self.channel_id = channel_id
+        self.last_message_id: int | None = None
+        self.last_error_kind: str | None = None
 
     def _url(self, method: str) -> str:
         return TELEGRAM_API_BASE.format(token=self.bot_token, method=method)
@@ -90,34 +92,69 @@ class TelegramPoster:
         # ham yopib qo'yamiz (aks holda Telegram "end tag topilmadi" deb butun postni rad etadi).
         return _close_unclosed_tags(trimmed) + "…"
 
+    @staticmethod
+    def _is_safe_to_retry(exc: Exception) -> bool:
+        """Faqat so'rov Telegram'ga UMUMAN yetib bormagani ANIQ bo'lgan xatolar (ulanish
+        o'rnatilmadi, DNS) qayta yuborilishi xavfsiz. ReadTimeout yoki javob kutilayotganda
+        uzilish — Telegram postni ALLAQACHON joylagan bo'lishi mumkin: qayta yuborish
+        kanalda DUBLIKAT post paydo qilardi (tabiat botida aniqlangan muammo)."""
+        if isinstance(exc, requests.exceptions.ConnectTimeout):
+            return True
+        text = str(exc)
+        return any(s in text for s in ("NewConnectionError", "NameResolutionError", "Failed to establish", "Name or service not known"))
+
     def _send(self, method: str, payload: dict, files: dict | None = None, max_retries: int = 1) -> bool:
         """Umumiy yuborish funksiyasi. Telegram 400/403 qaytarsa ham, javob tanasidagi
-        aniq sabab (masalan "can't parse entities", "chat not found") logga yoziladi —
-        aks holda faqat "400 Bad Request" ko'rinib, aniq sababni topib bo'lmaydi.
+        aniq sabab (masalan "can't parse entities", "chat not found") logga yoziladi.
 
-        `max_retries` > 1 bo'lsa, TARMOQ xatoligida (ulanish uzilishi, timeout — Telegram
-        API'ning o'zi qaytargan xato EMAS) shuncha martagacha qayta uriladi, orasida
-        qisqa kutish bilan — katta video fayllarni sekin/beqaror tarmoqda yuklashda
-        foydali (post_video_file shundan foydalanadi)."""
-        for attempt in range(1, max_retries + 1):
+        Natijadan keyin quyidagilar o'rnatiladi:
+          self.last_message_id — muvaffaqiyatli postning message_id'si;
+          self.last_error_kind — None (muvaffaqiyat), "api" (Telegram ANIQ rad etdi —
+            post chiqmagan), "network" (so'rov yetib bormagan — post chiqmagan),
+            "uncertain" (timeout/uzilish — post chiqqan bo'lishi MUMKIN).
+
+        429 (Too Many Requests) da Telegram aytgan `retry_after` kutilib, qayta uriladi."""
+        self.last_message_id = None
+        self.last_error_kind = None
+        attempt = 0
+        flood_waits = 0
+        while True:
+            attempt += 1
             try:
-                timeout = 180 if files else 60
+                timeout = (15, 180) if files else (15, 60)
                 resp = requests.post(self._url(method), data=payload, files=files, timeout=timeout)
             except requests.RequestException as exc:
+                if not self._is_safe_to_retry(exc):
+                    self.last_error_kind = "uncertain"
+                    logger.error(
+                        "Telegram %s: javob kutilayotganda xatolik — post chiqqan bo'lishi mumkin, "
+                        "DUBLIKAT bo'lmasligi uchun qayta yuborilmaydi: %s", method, exc,
+                    )
+                    return False
                 if attempt < max_retries:
                     logger.warning("Telegram %s tarmoq xatoligi (%d/%d-urinish), qayta urinilmoqda: %s", method, attempt, max_retries, exc)
                     time.sleep(3)
                     continue
+                self.last_error_kind = "network"
                 logger.error("Telegram %s so'rovida tarmoq xatoligi (%d urinishdan keyin ham): %s", method, max_retries, exc)
                 return False
 
             try:
                 result = resp.json()
             except ValueError:
+                self.last_error_kind = "uncertain" if resp.status_code >= 500 else "api"
                 logger.error("Telegram %s: javobni o'qib bo'lmadi (status %s): %s", method, resp.status_code, resp.text[:500])
                 return False
 
             if not result.get("ok"):
+                retry_after = (result.get("parameters") or {}).get("retry_after")
+                if resp.status_code == 429 and retry_after and flood_waits < 2:
+                    flood_waits += 1
+                    logger.warning("Telegram %s: flood-limit, %s soniya kutilmoqda...", method, retry_after)
+                    time.sleep(int(retry_after) + 1)
+                    attempt -= 1
+                    continue
+                self.last_error_kind = "api"
                 logger.error(
                     "Telegram %s rad etdi (status %s): %s",
                     method,
@@ -125,8 +162,10 @@ class TelegramPoster:
                     result.get("description", result),
                 )
                 return False
+            msg = result.get("result")
+            if isinstance(msg, dict):
+                self.last_message_id = msg.get("message_id")
             return True
-        return False  # bu qatorga yetib kelinmasligi kerak, lekin xavfsizlik uchun
 
     # ------------------------------------------------------------------
     # Rasm
@@ -150,7 +189,7 @@ class TelegramPoster:
         return self._send(
             "sendPhoto",
             {"chat_id": self.channel_id, "caption": caption, "parse_mode": "HTML"},
-            files={"photo": (filename, photo_bytes, "image/png")},
+            files={"photo": (filename, photo_bytes, "image/jpeg" if photo_bytes[:3] == b"\xff\xd8\xff" else "image/png")},
             max_retries=2,
         )
 
@@ -179,6 +218,8 @@ class TelegramPoster:
         bir qayta urinishda fayl QAYTADAN ochiladi (shu funksiya darajasida, _send emas) —
         aks holda avvalgi (muvaffaqiyatsiz) urinishda fayl o'qilgani uchun fayl
         ko'rsatkichi oxirida qolib, keyingi urinish BO'SH fayl yuborib yuborardi."""
+        self.last_message_id = None
+        self.last_error_kind = "api"  # quyidagi erta qaytishlar uchun: post aniq chiqmagan
         try:
             size = file_path.stat().st_size
         except OSError as exc:
@@ -210,6 +251,10 @@ class TelegramPoster:
 
             if ok:
                 return True
+            if self.last_error_kind in ("uncertain", "api"):
+                # "uncertain": video allaqachon chiqqan bo'lishi mumkin — qayta yuborish
+                # dublikat beradi. "api": Telegram aniq rad etdi — qayta yuborish foydasiz.
+                return False
             if attempt < max_retries:
                 logger.warning("Video yuborishda xatolik (%d/%d-urinish), fayl qaytadan ochilib qayta urinilmoqda...", attempt, max_retries)
                 time.sleep(3)

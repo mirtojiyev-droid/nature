@@ -154,3 +154,14 @@ def allowed_topics() -> list[str] | None:
         return None
     topics = [t.strip().lower() for t in raw.split(",") if t.strip()]
     return topics or None
+
+
+def candidates_per_query() -> int:
+    """Har bir manba/so'rov uchun nechta nomzod ko'rib chiqilsin (NATURE_CANDIDATES_PER_QUERY,
+    standart 15). Avval faqat 4 ta edi: bir xil so'rovning top-4 natijasi arxivda bo'lsa,
+    bot yangi kontent topa olmay "faqat rasm" yoki "postsiz" qolardi. Arxiv tekshiruvi
+    nomzodlarni o'tkazib yuborgani uchun ko'proq nomzod = ko'proq YANGI kontent."""
+    try:
+        return max(1, min(50, int(os.getenv("NATURE_CANDIDATES_PER_QUERY", "15"))))
+    except ValueError:
+        return 15
